@@ -153,7 +153,7 @@
         Blunt: 0.8
         Slash: 0.8
         Piercing: 0.6 #slightly less bulletproof than wardens normal coat
-        Heat: 0.75
+        Heat: 0.70
 
 - type: entity
   parent: ClothingOuterWinterCoat
