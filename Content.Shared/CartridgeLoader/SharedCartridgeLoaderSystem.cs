@@ -1,75 +1,53 @@
 ﻿using Content.Shared.Containers.ItemSlots;
 using Robust.Shared.Containers;
-using Robust.Shared.GameStates;
-using Robust.Shared.Map;
 
 namespace Content.Shared.CartridgeLoader;
 
 public abstract class SharedCartridgeLoaderSystem : EntitySystem
 {
+    public const string InstalledContainerId = "program-container";
+
     [Dependency] private readonly ItemSlotsSystem _itemSlotsSystem = default!;
     [Dependency] private readonly SharedAppearanceSystem _appearanceSystem = default!;
+    [Dependency] private readonly SharedContainerSystem _container = default!;
 
     public override void Initialize()
     {
         base.Initialize();
 
-        SubscribeLocalEvent<SharedCartridgeLoaderComponent, ComponentInit>(OnComponentInit);
-        SubscribeLocalEvent<SharedCartridgeLoaderComponent, ComponentRemove>(OnComponentRemove);
+        SubscribeLocalEvent<CartridgeLoaderComponent, ComponentInit>(OnComponentInit);
+        SubscribeLocalEvent<CartridgeLoaderComponent, ComponentRemove>(OnComponentRemove);
 
-        SubscribeLocalEvent<SharedCartridgeLoaderComponent, EntInsertedIntoContainerMessage>(OnItemInserted);
-        SubscribeLocalEvent<SharedCartridgeLoaderComponent, EntRemovedFromContainerMessage>(OnItemRemoved);
-
-        SubscribeLocalEvent<CartridgeComponent, ComponentGetState>(OnGetState);
-        SubscribeLocalEvent<CartridgeComponent, ComponentHandleState>(OnHandleState);
-
+        SubscribeLocalEvent<CartridgeLoaderComponent, EntInsertedIntoContainerMessage>(OnItemInserted);
+        SubscribeLocalEvent<CartridgeLoaderComponent, EntRemovedFromContainerMessage>(OnItemRemoved);
     }
 
-    private void OnComponentInit(EntityUid uid, SharedCartridgeLoaderComponent loader, ComponentInit args)
+    private void OnComponentInit(EntityUid uid, CartridgeLoaderComponent loader, ComponentInit args)
     {
-        _itemSlotsSystem.AddItemSlot(uid, SharedCartridgeLoaderComponent.CartridgeSlotId, loader.CartridgeSlot);
+        _itemSlotsSystem.AddItemSlot(uid, CartridgeLoaderComponent.CartridgeSlotId, loader.CartridgeSlot);
     }
 
     /// <summary>
     /// Marks installed program entities for deletion when the component gets removed
     /// </summary>
-    private void OnComponentRemove(EntityUid uid, SharedCartridgeLoaderComponent loader, ComponentRemove args)
+    private void OnComponentRemove(EntityUid uid, CartridgeLoaderComponent loader, ComponentRemove args)
     {
         _itemSlotsSystem.RemoveItemSlot(uid, loader.CartridgeSlot);
-
-        foreach (var program in loader.InstalledPrograms)
-        {
-               EntityManager.QueueDeleteEntity(program);
-        }
+        if (_container.TryGetContainer(uid, InstalledContainerId, out var cont))
+            _container.ShutdownContainer(cont);
     }
 
-    protected virtual void OnItemInserted(EntityUid uid, SharedCartridgeLoaderComponent loader, EntInsertedIntoContainerMessage args)
+    protected virtual void OnItemInserted(EntityUid uid, CartridgeLoaderComponent loader, EntInsertedIntoContainerMessage args)
     {
         UpdateAppearanceData(uid, loader);
     }
 
-    protected virtual void OnItemRemoved(EntityUid uid, SharedCartridgeLoaderComponent loader, EntRemovedFromContainerMessage args)
+    protected virtual void OnItemRemoved(EntityUid uid, CartridgeLoaderComponent loader, EntRemovedFromContainerMessage args)
     {
         UpdateAppearanceData(uid, loader);
     }
 
-    private void OnGetState(EntityUid uid, CartridgeComponent component, ref ComponentGetState args)
-    {
-        var state = new CartridgeComponentState();
-        state.InstallationStatus = component.InstallationStatus;
-
-        args.State = state;
-    }
-
-    private void OnHandleState(EntityUid uid, CartridgeComponent component, ref ComponentHandleState args)
-    {
-        if (args.Current is not CartridgeComponentState state)
-            return;
-
-        component.InstallationStatus = state.InstallationStatus;
-    }
-
-    private void UpdateAppearanceData(EntityUid uid, SharedCartridgeLoaderComponent loader)
+    private void UpdateAppearanceData(EntityUid uid, CartridgeLoaderComponent loader)
     {
         _appearanceSystem.SetData(uid, CartridgeLoaderVisuals.CartridgeInserted, loader.CartridgeSlot.HasItem);
     }
@@ -145,3 +123,11 @@ public sealed class CartridgeUiReadyEvent : EntityEventArgs
         Loader = loader;
     }
 }
+
+/// <summary>
+/// Gets sent by the cartridge loader system to the cartridge loader entity so another system
+/// can handle displaying the notification
+/// </summary>
+/// <param name="Message">The message to be displayed</param>
+[ByRefEvent]
+public record struct CartridgeLoaderNotificationSentEvent(string Header, string Message);

@@ -2,24 +2,22 @@ using Content.Client.SubFloor;
 using Content.Shared.Atmos;
 using Content.Shared.Atmos.Components;
 using Content.Shared.Atmos.Piping;
-using Content.Shared.SubFloor;
 using JetBrains.Annotations;
 using Robust.Client.GameObjects;
-using Robust.Client.ResourceManagement;
 
 namespace Content.Client.Atmos.EntitySystems;
 
 [UsedImplicitly]
 public sealed class AtmosPipeAppearanceSystem : EntitySystem
 {
-    [Dependency] private readonly IResourceCache _resCache = default!;
+    [Dependency] private readonly SharedAppearanceSystem _appearance = default!;
 
     public override void Initialize()
     {
         base.Initialize();
 
         SubscribeLocalEvent<PipeAppearanceComponent, ComponentInit>(OnInit);
-        SubscribeLocalEvent<PipeAppearanceComponent, AppearanceChangeEvent>(OnAppearanceChanged, after: new[] { typeof(SubFloorHideSystem) });
+        SubscribeLocalEvent<PipeAppearanceComponent, AppearanceChangeEvent>(OnAppearanceChanged, after: [typeof(SubFloorHideSystem)]);
     }
 
     private void OnInit(EntityUid uid, PipeAppearanceComponent component, ComponentInit args)
@@ -27,20 +25,25 @@ public sealed class AtmosPipeAppearanceSystem : EntitySystem
         if (!TryComp(uid, out SpriteComponent? sprite))
             return;
 
-        if (!_resCache.TryGetResource(SharedSpriteComponent.TextureRoot / component.RsiPath, out RSIResource? rsi))
-        {
-            Logger.Error($"{nameof(AtmosPipeAppearanceSystem)} could not load to load RSI {component.RsiPath}.");
-            return;
-        }
-
         foreach (PipeConnectionLayer layerKey in Enum.GetValues(typeof(PipeConnectionLayer)))
         {
             sprite.LayerMapReserveBlank(layerKey);
             var layer = sprite.LayerMapGet(layerKey);
-            sprite.LayerSetRSI(layer, rsi.RSI);
-            var layerState = component.State;
-            sprite.LayerSetState(layer, layerState);
+            sprite.LayerSetRSI(layer, component.Sprite.RsiPath);
+            sprite.LayerSetState(layer, component.Sprite.RsiState);
             sprite.LayerSetDirOffset(layer, ToOffset(layerKey));
+        }
+    }
+
+    private void HideAllPipeConnection(SpriteComponent sprite)
+    {
+        foreach (PipeConnectionLayer layerKey in Enum.GetValues(typeof(PipeConnectionLayer)))
+        {
+            if (!sprite.LayerMapTryGet(layerKey, out var key))
+                continue;
+
+            var layer = sprite[key];
+            layer.Visible = false;
         }
     }
 
@@ -56,11 +59,14 @@ public sealed class AtmosPipeAppearanceSystem : EntitySystem
             return;
         }
 
-        if (!args.Component.TryGetData(PipeColorVisuals.Color, out Color color))
-            color = Color.White;
-
-        if (!args.Component.TryGetData(PipeVisuals.VisualState, out PipeDirection worldConnectedDirections))
+        if (!_appearance.TryGetData<PipeDirection>(uid, PipeVisuals.VisualState, out var worldConnectedDirections, args.Component))
+        {
+            HideAllPipeConnection(args.Sprite);
             return;
+        }
+
+        if (!_appearance.TryGetData<Color>(uid, PipeColorVisuals.Color, out var color, args.Component))
+            color = Color.White;
 
         // transform connected directions to local-coordinates
         var connectedDirections = worldConnectedDirections.RotatePipeDirection(-Transform(uid).LocalRotation);
@@ -76,7 +82,8 @@ public sealed class AtmosPipeAppearanceSystem : EntitySystem
 
             layer.Visible &= visible;
 
-            if (!visible) continue;
+            if (!visible)
+                continue;
 
             layer.Color = color;
         }

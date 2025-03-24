@@ -1,7 +1,8 @@
+using Content.Client.UserInterface.Controls;
 using Content.Client.VendingMachines.UI;
 using Content.Shared.VendingMachines;
-using Robust.Client.GameObjects;
-using Robust.Client.UserInterface.Controls;
+using Robust.Client.UserInterface;
+using Robust.Shared.Input;
 using System.Linq;
 
 namespace Content.Client.VendingMachines
@@ -11,9 +12,10 @@ namespace Content.Client.VendingMachines
         [ViewVariables]
         private VendingMachineMenu? _menu;
 
+        [ViewVariables]
         private List<VendingMachineInventoryEntry> _cachedInventory = new();
 
-        public VendingMachineBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
+        public VendingMachineBoundUserInterface(EntityUid owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 
@@ -21,44 +23,48 @@ namespace Content.Client.VendingMachines
         {
             base.Open();
 
-            var entMan = IoCManager.Resolve<IEntityManager>();
-            var vendingMachineSys = entMan.System<VendingMachineSystem>();
-
-            _cachedInventory = vendingMachineSys.GetAllInventory(Owner.Owner);
-
-            _menu = new VendingMachineMenu {Title = entMan.GetComponent<MetaDataComponent>(Owner.Owner).EntityName};
-
-            _menu.OnClose += Close;
+            _menu = this.CreateWindowCenteredLeft<VendingMachineMenu>();
+            _menu.Title = EntMan.GetComponent<MetaDataComponent>(Owner).EntityName;
             _menu.OnItemSelected += OnItemSelected;
-
-            _menu.Populate(_cachedInventory);
-
-            _menu.OpenCentered();
+            Refresh();
         }
 
-        protected override void UpdateState(BoundUserInterfaceState state)
+        public void Refresh()
         {
-            base.UpdateState(state);
+            var enabled = EntMan.TryGetComponent(Owner, out VendingMachineComponent? bendy) && !bendy.Ejecting;
 
-            if (state is not VendingMachineInterfaceState newState)
+            var system = EntMan.System<VendingMachineSystem>();
+            _cachedInventory = system.GetAllInventory(Owner);
+
+            _menu?.Populate(_cachedInventory, enabled);
+        }
+
+        public void UpdateAmounts()
+        {
+            var enabled = EntMan.TryGetComponent(Owner, out VendingMachineComponent? bendy) && !bendy.Ejecting;
+
+            var system = EntMan.System<VendingMachineSystem>();
+            _cachedInventory = system.GetAllInventory(Owner);
+            _menu?.UpdateAmounts(_cachedInventory, enabled);
+        }
+
+        private void OnItemSelected(GUIBoundKeyEventArgs args, ListData data)
+        {
+            if (args.Function != EngineKeyFunctions.UIClick)
                 return;
 
-            _cachedInventory = newState.Inventory;
+            if (data is not VendorItemsListData { ItemIndex: var itemIndex })
+                return;
 
-            _menu?.Populate(_cachedInventory);
-        }
-
-        private void OnItemSelected(ItemList.ItemListSelectedEventArgs args)
-        {
             if (_cachedInventory.Count == 0)
                 return;
 
-            var selectedItem = _cachedInventory.ElementAtOrDefault(args.ItemIndex);
+            var selectedItem = _cachedInventory.ElementAtOrDefault(itemIndex);
 
             if (selectedItem == null)
                 return;
 
-            SendMessage(new VendingMachineEjectMessage(selectedItem.Type, selectedItem.ID));
+            SendPredictedMessage(new VendingMachineEjectMessage(selectedItem.Type, selectedItem.ID));
         }
 
         protected override void Dispose(bool disposing)

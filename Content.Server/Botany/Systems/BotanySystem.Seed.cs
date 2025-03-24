@@ -1,26 +1,40 @@
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Content.Server.Botany.Components;
-using Content.Server.Mind.Commands;
 using Content.Server.Kitchen.Components;
+using Content.Server.Popups;
+using Content.Shared.Chemistry.EntitySystems;
 using Content.Shared.Botany;
 using Content.Shared.Examine;
+using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Popups;
+using Content.Shared.Random;
 using Content.Shared.Random.Helpers;
-using Content.Shared.Slippery;
-using Content.Shared.StepTrigger.Components;
 using Robust.Server.GameObjects;
 using Robust.Shared.Map;
-using Robust.Shared.Player;
+using Robust.Shared.Prototypes;
 using Robust.Shared.Random;
-using Robust.Shared.Utility;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
+using Content.Shared.Administration.Logs;
+using Content.Shared.Database;
 
 namespace Content.Server.Botany.Systems;
 
-public sealed partial class BotanySystem
+public sealed partial class BotanySystem : EntitySystem
 {
-    public void InitializeSeeds()
+    [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
+    [Dependency] private readonly IRobustRandom _robustRandom = default!;
+    [Dependency] private readonly AppearanceSystem _appearance = default!;
+    [Dependency] private readonly PopupSystem _popupSystem = default!;
+    [Dependency] private readonly SharedHandsSystem _hands = default!;
+    [Dependency] private readonly SharedSolutionContainerSystem _solutionContainerSystem = default!;
+    [Dependency] private readonly MetaDataSystem _metaData = default!;
+    [Dependency] private readonly RandomHelperSystem _randomHelper = default!;
+    [Dependency] private readonly ISharedAdminLogManager _adminLogger = default!;
+
+    public override void Initialize()
     {
+        base.Initialize();
+
         SubscribeLocalEvent<SeedComponent, ExaminedEvent>(OnExamined);
     }
 
@@ -70,29 +84,34 @@ public sealed partial class BotanySystem
         if (!TryGetSeed(component, out var seed))
             return;
 
-        args.PushMarkup(Loc.GetString($"seed-component-description", ("seedName", seed.DisplayName)));
-        args.PushMarkup(Loc.GetString($"seed-component-plant-yield-text", ("seedYield", seed.Yield)));
-        args.PushMarkup(Loc.GetString($"seed-component-plant-potency-text", ("seedPotency", seed.Potency)));
+        using (args.PushGroup(nameof(SeedComponent), 1))
+        {
+            var name = Loc.GetString(seed.DisplayName);
+            args.PushMarkup(Loc.GetString($"seed-component-description", ("seedName", name)));
+            args.PushMarkup(Loc.GetString($"seed-component-plant-yield-text", ("seedYield", seed.Yield)));
+            args.PushMarkup(Loc.GetString($"seed-component-plant-potency-text", ("seedPotency", seed.Potency)));
+        }
     }
 
     #region SeedPrototype prototype stuff
 
-    public EntityUid SpawnSeedPacket(SeedData proto, EntityCoordinates transformCoordinates)
+    /// <summary>
+    /// Spawns a new seed packet on the floor at a position, then tries to put it in the user's hands if possible.
+    /// </summary>
+    public EntityUid SpawnSeedPacket(SeedData proto, EntityCoordinates coords, EntityUid user, float? healthOverride = null)
     {
-        var seed = Spawn(proto.PacketPrototype, transformCoordinates);
+        var seed = Spawn(proto.PacketPrototype, coords);
         var seedComp = EnsureComp<SeedComponent>(seed);
         seedComp.Seed = proto;
+        seedComp.HealthOverride = healthOverride;
 
-        if (TryComp(seed, out SpriteComponent? sprite))
-        {
-            // TODO visualizer
-            // SeedPrototype state will always be seed. Blame the spriter if that's not the case!
-            sprite.LayerSetSprite(0, new SpriteSpecifier.Rsi(proto.PlantRsi, "seed"));
-        }
+        var name = Loc.GetString(proto.Name);
+        var noun = Loc.GetString(proto.Noun);
+        var val = Loc.GetString("botany-seed-packet-name", ("seedName", name), ("seedNoun", noun));
+        _metaData.SetEntityName(seed, val);
 
-        string val = Loc.GetString("botany-seed-packet-name", ("seedName", proto.Name), ("seedNoun", proto.Noun));
-        MetaData(seed).EntityName = val;
-
+        // try to automatically place in user's other hand
+        _hands.TryPickupAnyHand(user, seed);
         return seed;
     }
 
@@ -100,7 +119,12 @@ public sealed partial class BotanySystem
     {
         if (position.IsValid(EntityManager) &&
             proto.ProductPrototypes.Count > 0)
+        {
+            if (proto.HarvestLogImpact != null)
+                _adminLogger.Add(LogType.Botany, proto.HarvestLogImpact.Value, $"Auto-harvested {Loc.GetString(proto.Name):seed} at Pos:{position}.");
+
             return GenerateProduct(proto, position, yieldMod);
+        }
 
         return Enumerable.Empty<EntityUid>();
     }
@@ -109,13 +133,16 @@ public sealed partial class BotanySystem
     {
         if (proto.ProductPrototypes.Count == 0 || proto.Yield <= 0)
         {
-            _popupSystem.PopupCursor(Loc.GetString("botany-harvest-fail-message"),
-                Filter.Entities(user), PopupType.Medium);
+            _popupSystem.PopupCursor(Loc.GetString("botany-harvest-fail-message"), user, PopupType.Medium);
             return Enumerable.Empty<EntityUid>();
         }
 
-        _popupSystem.PopupCursor(Loc.GetString("botany-harvest-success-message", ("name", proto.DisplayName)),
-            Filter.Entities(user), PopupType.Medium);
+        var name = Loc.GetString(proto.DisplayName);
+        _popupSystem.PopupCursor(Loc.GetString("botany-harvest-success-message", ("name", name)), user, PopupType.Medium);
+
+        if (proto.HarvestLogImpact != null)
+            _adminLogger.Add(LogType.Botany, proto.HarvestLogImpact.Value, $"{ToPrettyString(user):player} harvested {Loc.GetString(proto.Name):seed} at Pos:{Transform(user).Coordinates}.");
+
         return GenerateProduct(proto, Transform(user).Coordinates, yieldMod);
     }
 
@@ -142,7 +169,7 @@ public sealed partial class BotanySystem
             var product = _robustRandom.Pick(proto.ProductPrototypes);
 
             var entity = Spawn(product, position);
-            entity.RandomOffset(0.25f);
+            _randomHelper.RandomOffset(entity, 0.25f);
             products.Add(entity);
 
             var produce = EnsureComp<ProduceComponent>(entity);
@@ -150,32 +177,14 @@ public sealed partial class BotanySystem
             produce.Seed = proto;
             ProduceGrown(entity, produce);
 
-            if (TryComp<AppearanceComponent>(entity, out var appearance))
-            {
-                appearance.SetData(ProduceVisuals.Potency, proto.Potency);
-            }
+            _appearance.SetData(entity, ProduceVisuals.Potency, proto.Potency);
 
             if (proto.Mysterious)
             {
                 var metaData = MetaData(entity);
-                metaData.EntityName += "?";
-                metaData.EntityDescription += " " + Loc.GetString("botany-mysterious-description-addon");
-            }
-
-            if (proto.Bioluminescent)
-            {
-                var light = EnsureComp<PointLightComponent>(entity);
-                light.Radius = proto.BioluminescentRadius;
-                light.Color = proto.BioluminescentColor;
-                light.CastShadows = false; // this is expensive, and botanists make lots of plants
-                light.Dirty();
-            }
-
-            if (proto.Slip)
-            {
-                var slippery = EnsureComp<SlipperyComponent>(entity);
-                EntityManager.Dirty(slippery);
-                EnsureComp<StepTriggerComponent>(entity);
+                _metaData.SetEntityName(entity, metaData.EntityName + "?", metaData);
+                _metaData.SetEntityDescription(entity,
+                    metaData.EntityDescription + " " + Loc.GetString("botany-mysterious-description-addon"), metaData);
             }
         }
 

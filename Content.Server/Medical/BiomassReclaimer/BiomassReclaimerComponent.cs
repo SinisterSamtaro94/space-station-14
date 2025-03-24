@@ -1,16 +1,10 @@
 using Content.Shared.Storage;
-using System.Threading;
-using Content.Shared.Construction.Prototypes;
-using Robust.Shared.Prototypes;
-using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype;
 
 namespace Content.Server.Medical.BiomassReclaimer
 {
     [RegisterComponent]
-    public sealed class BiomassReclaimerComponent : Component
+    public sealed partial class BiomassReclaimerComponent : Component
     {
-        public CancellationTokenSource? CancelToken;
-
         /// <summary>
         /// This gets set for each mob it processes.
         /// When it hits 0, there is a chance for the reclaimer to either spill blood or throw an item.
@@ -21,7 +15,7 @@ namespace Content.Server.Medical.BiomassReclaimer
         /// <summary>
         /// The interval for <see cref="RandomMessTimer"/>.
         /// </summary>
-        [ViewVariables(VVAccess.ReadWrite), DataField("randomMessInterval")]
+        [ViewVariables(VVAccess.ReadWrite), DataField]
         public TimeSpan RandomMessInterval = TimeSpan.FromSeconds(5);
 
         /// <summary>
@@ -34,9 +28,10 @@ namespace Content.Server.Medical.BiomassReclaimer
         /// <summary>
         /// Amount of biomass that the mob being processed will yield.
         /// This is calculated from the YieldPerUnitMass.
+        /// Also stores non-integer leftovers.
         /// </summary>
         [ViewVariables]
-        public int CurrentExpectedYield = default;
+        public float CurrentExpectedYield = 0f;
 
         /// <summary>
         /// The reagent that will be spilled while processing a mob.
@@ -52,64 +47,31 @@ namespace Content.Server.Medical.BiomassReclaimer
         /// <summary>
         /// How many units of biomass it produces for each unit of mass.
         /// </summary>
-        [ViewVariables(VVAccess.ReadWrite)]
-        public float YieldPerUnitMass = default;
+        [DataField, ViewVariables(VVAccess.ReadWrite)]
+        public float YieldPerUnitMass = 0.4f;
 
         /// <summary>
-        /// The entity that is output by the reclaimer
+        /// How many seconds to take to insert an entity per unit of its mass.
         /// </summary>
-        [DataField("outputEntityId", customTypeSerializer: typeof(PrototypeIdSerializer<EntityPrototype>)), ViewVariables(VVAccess.ReadWrite)]
-        public string OutputEntityId = "MaterialBiomass";
+        [DataField, ViewVariables(VVAccess.ReadWrite)]
+        public float BaseInsertionDelay = 0.1f;
 
         /// <summary>
-        /// The base yield per mass unit when no components are upgraded.
+        /// How much to multiply biomass yield from botany produce.
         /// </summary>
-        [ViewVariables, DataField("baseYieldPerUnitMass")]
-        public float BaseYieldPerUnitMass = 0.4f;
-
-        /// <summary>
-        /// Machine part whose rating modifies the yield per mass.
-        /// </summary>
-        [DataField("machinePartYieldAmount", customTypeSerializer: typeof(PrototypeIdSerializer<MachinePartPrototype>))]
-        public string MachinePartYieldAmount = "Manipulator";
-
-        /// <summary>
-        /// How much the machine part quality affects the yield.
-        /// Going up a tier will multiply the yield by this amount.
-        /// </summary>
-        [DataField("partRatingYieldAmountMultiplier")]
-        public float PartRatingYieldAmountMultiplier = 1.25f;
+        [DataField, ViewVariables(VVAccess.ReadWrite)]
+        public float ProduceYieldMultiplier = 0.25f;
 
         /// <summary>
         /// The time it takes to process a mob, per mass.
         /// </summary>
-        [ViewVariables(VVAccess.ReadWrite)]
-        public float ProcessingTimePerUnitMass = default;
-
-        /// <summary>
-        /// The base time per mass unit that it takes to process a mob
-        /// when no components are upgraded.
-        /// </summary>
-        [ViewVariables, DataField("baseProcessingTimePerUnitMass")]
-        public float BaseProcessingTimePerUnitMass = 0.5f;
-
-        /// <summary>
-        /// The machine part that increses the processing speed.
-        /// </summary>
-        [DataField("machinePartProcessSpeed", customTypeSerializer: typeof(PrototypeIdSerializer<MachinePartPrototype>))]
-        public string MachinePartProcessingSpeed = "Laser";
-
-        /// <summary>
-        /// How much the machine part quality affects the yield.
-        /// Going up a tier will multiply the speed by this amount.
-        /// </summary>
-        [ViewVariables, DataField("partRatingSpeedMultiplier")]
-        public float PartRatingSpeedMultiplier = 1.35f;
+        [DataField, ViewVariables(VVAccess.ReadWrite)]
+        public float ProcessingTimePerUnitMass = 0.5f;
 
         /// <summary>
         /// Will this refuse to gib a living mob?
         /// </summary>
-        [ViewVariables(VVAccess.ReadWrite), DataField("safetyEnabled")]
+        [ViewVariables(VVAccess.ReadWrite), DataField]
         public bool SafetyEnabled = true;
     }
 }

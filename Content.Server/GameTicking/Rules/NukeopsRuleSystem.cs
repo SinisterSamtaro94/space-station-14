@@ -1,345 +1,229 @@
-using System.Linq;
-using Content.Server.CharacterAppearance.Components;
-using Content.Server.Chat.Managers;
-using Content.Server.GameTicking.Rules.Configurations;
-using Content.Server.Ghost.Roles.Components;
-using Content.Server.Ghost.Roles.Events;
-using Content.Server.Mind.Components;
+using Content.Server.Antag;
+using Content.Server.Communications;
+using Content.Server.GameTicking.Rules.Components;
 using Content.Server.Nuke;
+using Content.Server.NukeOps;
+using Content.Server.Popups;
+using Content.Server.Roles;
 using Content.Server.RoundEnd;
-using Content.Server.Shuttles.Components;
+using Content.Server.Shuttles.Events;
 using Content.Server.Shuttles.Systems;
-using Content.Server.Spawners.Components;
-using Content.Server.Station.Systems;
-using Content.Shared.MobState;
-using Content.Shared.Dataset;
-using Content.Shared.Roles;
-using Robust.Server.Maps;
-using Robust.Server.Player;
+using Content.Server.Station.Components;
+using Content.Server.Store.Systems;
+using Content.Shared.GameTicking.Components;
+using Content.Shared.Mobs;
+using Content.Shared.Mobs.Components;
+using Content.Shared.NPC.Components;
+using Content.Shared.NPC.Systems;
+using Content.Shared.Nuke;
+using Content.Shared.NukeOps;
+using Content.Shared.Store;
+using Content.Shared.Tag;
+using Content.Shared.Zombies;
 using Robust.Shared.Map;
-using Robust.Shared.Prototypes;
 using Robust.Shared.Random;
 using Robust.Shared.Utility;
-using Content.Server.Traitor;
-using Content.Shared.MobState.Components;
-using System.Data;
-using Content.Server.GameTicking.Rules.Components;
-using Content.Server.Station.Components;
-using Content.Shared.Chat;
-using Content.Shared.Nuke;
-using Robust.Server.GameObjects;
-using Content.Server.NPC.Components;
-using Content.Server.NPC.Systems;
-using Content.Server.Traitor.Uplink;
-using Robust.Shared.Audio;
-using Robust.Shared.Configuration;
-using Robust.Shared.Player;
-using Content.Server.Administration.Commands;
-using Content.Server.Humanoid.Systems;
-using Content.Shared.Preferences;
-using Content.Server.Preferences.Managers;
+using System.Linq;
+using Content.Shared.Store.Components;
 
 namespace Content.Server.GameTicking.Rules;
 
-public sealed class NukeopsRuleSystem : GameRuleSystem
+public sealed class NukeopsRuleSystem : GameRuleSystem<NukeopsRuleComponent>
 {
-    [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
-    [Dependency] private readonly IRobustRandom _random = default!;
-    [Dependency] private readonly IConfigurationManager _cfg = default!;
-    [Dependency] private readonly IServerPreferencesManager _prefs = default!;
-    [Dependency] private readonly IChatManager _chatManager = default!;
-    [Dependency] private readonly IMapManager _mapManager = default!;
-    [Dependency] private readonly IPlayerManager _playerSystem = default!;
-    [Dependency] private readonly FactionSystem _faction = default!;
-    [Dependency] private readonly StationSpawningSystem _stationSpawningSystem = default!;
-    [Dependency] private readonly StationSystem _stationSystem = default!;
-    [Dependency] private readonly ShuttleSystem _shuttleSystem = default!;
+    [Dependency] private readonly AntagSelectionSystem _antag = default!;
+    [Dependency] private readonly EmergencyShuttleSystem _emergency = default!;
+    [Dependency] private readonly NpcFactionSystem _npcFaction = default!;
+    [Dependency] private readonly PopupSystem _popupSystem = default!;
     [Dependency] private readonly RoundEndSystem _roundEndSystem = default!;
-    [Dependency] private readonly SharedAudioSystem _audioSystem = default!;
-    [Dependency] private readonly GameTicker _ticker = default!;
-    [Dependency] private readonly MapLoaderSystem _map = default!;
-    [Dependency] private readonly RandomHumanoidSystem _randomHumanoid = default!;
+    [Dependency] private readonly StoreSystem _store = default!;
+    [Dependency] private readonly TagSystem _tag = default!;
 
+    [ValidatePrototypeId<CurrencyPrototype>]
+    private const string TelecrystalCurrencyPrototype = "Telecrystal";
 
-    private enum WinType
-    {
-        /// <summary>
-        ///     Operative major win. This means they nuked the station.
-        /// </summary>
-        OpsMajor,
-        /// <summary>
-        ///     Minor win. All nukies were alive at the end of the round.
-        ///     Alternatively, some nukies were alive, but the disk was left behind.
-        /// </summary>
-        OpsMinor,
-        /// <summary>
-        ///     Neutral win. The nuke exploded, but on the wrong station.
-        /// </summary>
-        Neutral,
-        /// <summary>
-        ///     Crew minor win. The nuclear authentication disk escaped on the shuttle,
-        ///     but some nukies were alive.
-        /// </summary>
-        CrewMinor,
-        /// <summary>
-        ///     Crew major win. This means they either killed all nukies,
-        ///     or the bomb exploded too far away from the station, or on the nukie moon.
-        /// </summary>
-        CrewMajor
-    }
-
-    private enum WinCondition
-    {
-        NukeExplodedOnCorrectStation,
-        NukeExplodedOnNukieOutpost,
-        NukeExplodedOnIncorrectLocation,
-        NukeActiveInStation,
-        NukeActiveAtCentCom,
-        NukeDiskOnCentCom,
-        NukeDiskNotOnCentCom,
-        NukiesAbandoned,
-        AllNukiesDead,
-        SomeNukiesAlive,
-        AllNukiesAlive
-    }
-
-    private WinType _winType = WinType.Neutral;
-
-    private WinType RuleWinType
-    {
-        get => _winType;
-        set
-        {
-            _winType = value;
-
-            if (value == WinType.CrewMajor || value == WinType.OpsMajor)
-            {
-                _roundEndSystem.EndRound();
-            }
-        }
-    }
-    private List<WinCondition> _winConditions = new ();
-
-    private MapId? _nukiePlanet;
-
-    // TODO: use components, don't just cache entity UIDs
-    // There have been (and probably still are) bugs where these refer to deleted entities from old rounds.
-    private EntityUid? _nukieOutpost;
-    private EntityUid? _nukieShuttle;
-    private EntityUid? _targetStation;
-
-    public override string Prototype => "Nukeops";
-
-    private NukeopsRuleConfiguration _nukeopsRuleConfig = new();
-
-    /// <summary>
-    ///     Cached starting gear prototypes.
-    /// </summary>
-    private readonly Dictionary<string, StartingGearPrototype> _startingGearPrototypes = new ();
-
-    /// <summary>
-    ///     Cached operator name prototypes.
-    /// </summary>
-    private readonly Dictionary<string, List<string>> _operativeNames = new();
-
-    /// <summary>
-    ///     Data to be used in <see cref="OnMindAdded"/> for an operative once the Mind has been added.
-    /// </summary>
-    private readonly Dictionary<EntityUid, string> _operativeMindPendingData = new();
-
-    /// <summary>
-    ///     Players who played as an operative at some point in the round.
-    /// </summary>
-    private readonly HashSet<IPlayerSession> _operativePlayers = new();
-
+    [ValidatePrototypeId<TagPrototype>]
+    private const string NukeOpsUplinkTagPrototype = "NukeOpsUplink";
 
     public override void Initialize()
     {
         base.Initialize();
 
-        SubscribeLocalEvent<RoundStartAttemptEvent>(OnStartAttempt);
-        SubscribeLocalEvent<RulePlayerSpawningEvent>(OnPlayersSpawning);
-        SubscribeLocalEvent<NukeOperativeComponent, MobStateChangedEvent>(OnMobStateChanged);
-        SubscribeLocalEvent<RoundEndTextAppendEvent>(OnRoundEndText);
         SubscribeLocalEvent<NukeExplodedEvent>(OnNukeExploded);
         SubscribeLocalEvent<GameRunLevelChangedEvent>(OnRunLevelChanged);
         SubscribeLocalEvent<NukeDisarmSuccessEvent>(OnNukeDisarm);
-        SubscribeLocalEvent<NukeOperativeComponent, GhostRoleSpawnerUsedEvent>(OnPlayersGhostSpawning);
-        SubscribeLocalEvent<NukeOperativeComponent, MindAddedMessage>(OnMindAdded);
-        SubscribeLocalEvent<NukeOperativeComponent, ComponentInit>(OnComponentInit);
+
         SubscribeLocalEvent<NukeOperativeComponent, ComponentRemove>(OnComponentRemove);
+        SubscribeLocalEvent<NukeOperativeComponent, MobStateChangedEvent>(OnMobStateChanged);
+        SubscribeLocalEvent<NukeOperativeComponent, EntityZombifiedEvent>(OnOperativeZombified);
+
+        SubscribeLocalEvent<NukeopsRoleComponent, GetBriefingEvent>(OnGetBriefing);
+
+        SubscribeLocalEvent<ConsoleFTLAttemptEvent>(OnShuttleFTLAttempt);
+        SubscribeLocalEvent<WarDeclaredEvent>(OnWarDeclared);
+        SubscribeLocalEvent<CommunicationConsoleCallShuttleAttemptEvent>(OnShuttleCallAttempt);
+
+        SubscribeLocalEvent<NukeopsRuleComponent, AfterAntagEntitySelectedEvent>(OnAfterAntagEntSelected);
+        SubscribeLocalEvent<NukeopsRuleComponent, RuleLoadedGridsEvent>(OnRuleLoadedGrids);
     }
 
-    private void OnComponentInit(EntityUid uid, NukeOperativeComponent component, ComponentInit args)
+    protected override void Started(EntityUid uid,
+        NukeopsRuleComponent component,
+        GameRuleComponent gameRule,
+        GameRuleStartedEvent args)
     {
-        // If entity has a prior mind attached, add them to the players list.
-        if (!TryComp<MindComponent>(uid, out var mindComponent) || !RuleAdded)
+        var eligible = new List<Entity<StationEventEligibleComponent, NpcFactionMemberComponent>>();
+        var eligibleQuery = EntityQueryEnumerator<StationEventEligibleComponent, NpcFactionMemberComponent>();
+        while (eligibleQuery.MoveNext(out var eligibleUid, out var eligibleComp, out var member))
+        {
+            if (!_npcFaction.IsFactionHostile(component.Faction, (eligibleUid, member)))
+                continue;
+
+            eligible.Add((eligibleUid, eligibleComp, member));
+        }
+
+        if (eligible.Count == 0)
             return;
 
-        var session = mindComponent.Mind?.Session;
-        if (session != null)
-            _operativePlayers.Add(session);
+        component.TargetStation = RobustRandom.Pick(eligible);
     }
 
-    private void OnComponentRemove(EntityUid uid, NukeOperativeComponent component, ComponentRemove args)
+    #region Event Handlers
+    protected override void AppendRoundEndText(EntityUid uid,
+        NukeopsRuleComponent component,
+        GameRuleComponent gameRule,
+        ref RoundEndTextAppendEvent args)
     {
-        CheckRoundShouldEnd();
+        var winText = Loc.GetString($"nukeops-{component.WinType.ToString().ToLower()}");
+        args.AddLine(winText);
+
+        foreach (var cond in component.WinConditions)
+        {
+            var text = Loc.GetString($"nukeops-cond-{cond.ToString().ToLower()}");
+            args.AddLine(text);
+        }
+
+        args.AddLine(Loc.GetString("nukeops-list-start"));
+
+        var antags =_antag.GetAntagIdentifiers(uid);
+
+        foreach (var (_, sessionData, name) in antags)
+        {
+            args.AddLine(Loc.GetString("nukeops-list-name-user", ("name", name), ("user", sessionData.UserName)));
+        }
     }
 
     private void OnNukeExploded(NukeExplodedEvent ev)
     {
-    	if (!RuleAdded)
-            return;
-
-        if (ev.OwningStation != null)
+        var query = QueryActiveRules();
+        while (query.MoveNext(out var uid, out _, out var nukeops, out _))
         {
-            if (ev.OwningStation == _nukieOutpost)
+            if (ev.OwningStation != null)
             {
-                _winConditions.Add(WinCondition.NukeExplodedOnNukieOutpost);
-                RuleWinType = WinType.CrewMajor;
-                return;
-            }
-
-            if (TryComp(_targetStation, out StationDataComponent? data))
-            {
-                foreach (var grid in data.Grids)
+                if (ev.OwningStation == GetOutpost(uid))
                 {
-                    if (grid != ev.OwningStation)
+                    nukeops.WinConditions.Add(WinCondition.NukeExplodedOnNukieOutpost);
+                    SetWinType((uid, nukeops), WinType.CrewMajor);
+                    continue;
+                }
+
+                if (TryComp(nukeops.TargetStation, out StationDataComponent? data))
+                {
+                    var correctStation = false;
+                    foreach (var grid in data.Grids)
                     {
-                        continue;
+                        if (grid != ev.OwningStation)
+                        {
+                            continue;
+                        }
+
+                        nukeops.WinConditions.Add(WinCondition.NukeExplodedOnCorrectStation);
+                        SetWinType((uid, nukeops), WinType.OpsMajor);
+                        correctStation = true;
                     }
 
-                    _winConditions.Add(WinCondition.NukeExplodedOnCorrectStation);
-                    RuleWinType = WinType.OpsMajor;
-                    return;
+                    if (correctStation)
+                        continue;
                 }
+
+                nukeops.WinConditions.Add(WinCondition.NukeExplodedOnIncorrectLocation);
+            }
+            else
+            {
+                nukeops.WinConditions.Add(WinCondition.NukeExplodedOnIncorrectLocation);
             }
 
-            _winConditions.Add(WinCondition.NukeExplodedOnIncorrectLocation);
+            _roundEndSystem.EndRound();
         }
-        else
-        {
-            _winConditions.Add(WinCondition.NukeExplodedOnIncorrectLocation);
-        }
-
-        _roundEndSystem.EndRound();
     }
 
     private void OnRunLevelChanged(GameRunLevelChangedEvent ev)
     {
-        switch (ev.New)
-        {
-            case GameRunLevel.InRound:
-                OnRoundStart();
-                break;
-            case GameRunLevel.PostRound:
-                OnRoundEnd();
-                break;
-        }
-    }
-
-    private void OnRoundStart()
-    {
-        // TODO: This needs to try and target a Nanotrasen station. At the very least,
-        // we can only currently guarantee that NT stations are the only station to
-        // exist in the base game.
-
-        _targetStation = _stationSystem.Stations.FirstOrNull();
-
-        if (_targetStation == null)
-        {
+        if (ev.New is not GameRunLevel.PostRound)
             return;
-        }
 
-        var filter = Filter.Empty();
-        foreach (var nukie in EntityQuery<NukeOperativeComponent>())
+        var query = QueryActiveRules();
+        while (query.MoveNext(out var uid, out _, out var nukeops, out _))
         {
-            if (!TryComp<ActorComponent>(nukie.Owner, out var actor))
-            {
-                continue;
-            }
-
-            _chatManager.DispatchServerMessage(actor.PlayerSession, Loc.GetString("nukeops-welcome", ("station", _targetStation.Value)));
-            filter.AddPlayer(actor.PlayerSession);
+            OnRoundEnd((uid, nukeops));
         }
-
-        _audioSystem.PlayGlobal(_nukeopsRuleConfig.GreetSound, filter);
     }
 
-    private void OnRoundEnd()
+    private void OnRoundEnd(Entity<NukeopsRuleComponent> ent)
     {
         // If the win condition was set to operative/crew major win, ignore.
-        if (RuleWinType == WinType.OpsMajor || RuleWinType == WinType.CrewMajor)
-        {
+        if (ent.Comp.WinType == WinType.OpsMajor || ent.Comp.WinType == WinType.CrewMajor)
             return;
-        }
 
-        foreach (var (nuke, nukeTransform) in EntityManager.EntityQuery<NukeComponent, TransformComponent>(true))
+        var nukeQuery = AllEntityQuery<NukeComponent, TransformComponent>();
+        var centcomms = _emergency.GetCentcommMaps();
+
+        while (nukeQuery.MoveNext(out var nuke, out var nukeTransform))
         {
             if (nuke.Status != NukeStatus.ARMED)
-            {
                 continue;
-            }
 
             // UH OH
-            if (nukeTransform.MapID == _shuttleSystem.CentComMap)
+            if (nukeTransform.MapUid != null && centcomms.Contains(nukeTransform.MapUid.Value))
             {
-                _winConditions.Add(WinCondition.NukeActiveAtCentCom);
-                RuleWinType = WinType.OpsMajor;
+                ent.Comp.WinConditions.Add(WinCondition.NukeActiveAtCentCom);
+                SetWinType((ent, ent), WinType.OpsMajor);
                 return;
             }
 
-            if (nukeTransform.GridUid == null || _targetStation == null)
-            {
+            if (nukeTransform.GridUid == null || ent.Comp.TargetStation == null)
                 continue;
-            }
 
-            if (!TryComp(_targetStation.Value, out StationDataComponent? data))
-            {
+            if (!TryComp(ent.Comp.TargetStation.Value, out StationDataComponent? data))
                 continue;
-            }
 
             foreach (var grid in data.Grids)
             {
                 if (grid != nukeTransform.GridUid)
-                {
                     continue;
-                }
 
-                _winConditions.Add(WinCondition.NukeActiveInStation);
-                RuleWinType = WinType.OpsMajor;
+                ent.Comp.WinConditions.Add(WinCondition.NukeActiveInStation);
+                SetWinType(ent, WinType.OpsMajor);
                 return;
             }
         }
 
-        var allAlive = true;
-        foreach (var (_, state) in EntityQuery<NukeOperativeComponent, MobStateComponent>())
+        if (_antag.AllAntagsAlive(ent.Owner))
         {
-            if (state.CurrentState is DamageState.Alive)
-            {
-                continue;
-            }
-
-            allAlive = false;
-            break;
-        }
-        // If all nuke ops were alive at the end of the round,
-        // the nuke ops win. This is to prevent people from
-        // running away the moment nuke ops appear.
-        if (allAlive)
-        {
-            RuleWinType = WinType.OpsMinor;
-            _winConditions.Add(WinCondition.AllNukiesAlive);
+            SetWinType(ent, WinType.OpsMinor);
+            ent.Comp.WinConditions.Add(WinCondition.AllNukiesAlive);
             return;
         }
 
-        _winConditions.Add(WinCondition.SomeNukiesAlive);
+        ent.Comp.WinConditions.Add(_antag.AnyAliveAntags(ent.Owner)
+            ? WinCondition.SomeNukiesAlive
+            : WinCondition.AllNukiesDead);
 
         var diskAtCentCom = false;
-        foreach (var (comp, transform) in EntityManager.EntityQuery<NukeDiskComponent, TransformComponent>())
+        var diskQuery = AllEntityQuery<NukeDiskComponent, TransformComponent>();
+        while (diskQuery.MoveNext(out var diskUid, out _, out var transform))
         {
-            var diskMapId = transform.MapID;
-            diskAtCentCom = _shuttleSystem.CentComMap == diskMapId;
+            diskAtCentCom = transform.MapUid != null && centcomms.Contains(transform.MapUid.Value);
+            diskAtCentCom |= _emergency.IsTargetEscaping(diskUid);
 
             // TODO: The target station should be stored, and the nuke disk should store its original station.
             // This is fine for now, because we can assume a single station in base SS14.
@@ -348,62 +232,204 @@ public sealed class NukeopsRuleSystem : GameRuleSystem
 
         // If the disk is currently at Central Command, the crew wins - just slightly.
         // This also implies that some nuclear operatives have died.
-        if (diskAtCentCom)
+        SetWinType(ent,
+            diskAtCentCom
+            ? WinType.CrewMinor
+            : WinType.OpsMinor);
+        ent.Comp.WinConditions.Add(diskAtCentCom
+            ? WinCondition.NukeDiskOnCentCom
+            : WinCondition.NukeDiskNotOnCentCom);
+    }
+
+    private void OnNukeDisarm(NukeDisarmSuccessEvent ev)
+    {
+        CheckRoundShouldEnd();
+    }
+
+    private void OnComponentRemove(EntityUid uid, NukeOperativeComponent component, ComponentRemove args)
+    {
+        CheckRoundShouldEnd();
+    }
+
+    private void OnMobStateChanged(EntityUid uid, NukeOperativeComponent component, MobStateChangedEvent ev)
+    {
+        if (ev.NewMobState == MobState.Dead)
+            CheckRoundShouldEnd();
+    }
+
+    private void OnOperativeZombified(EntityUid uid, NukeOperativeComponent component, ref EntityZombifiedEvent args)
+    {
+        RemCompDeferred(uid, component);
+    }
+
+    private void OnRuleLoadedGrids(Entity<NukeopsRuleComponent> ent, ref RuleLoadedGridsEvent args)
+    {
+        // Check each nukie shuttle
+        var query = EntityQueryEnumerator<NukeOpsShuttleComponent>();
+        while (query.MoveNext(out var uid, out var shuttle))
         {
-            RuleWinType = WinType.CrewMinor;
-            _winConditions.Add(WinCondition.NukeDiskOnCentCom);
-        }
-        // Otherwise, the nuke ops win.
-        else
-        {
-            RuleWinType = WinType.OpsMinor;
-            _winConditions.Add(WinCondition.NukeDiskNotOnCentCom);
+            // Check if the shuttle's mapID is the one that just got loaded for this rule
+            if (Transform(uid).MapID == args.Map)
+            {
+                shuttle.AssociatedRule = ent;
+                break;
+            }
         }
     }
 
-    private void OnRoundEndText(RoundEndTextAppendEvent ev)
+    private void OnShuttleFTLAttempt(ref ConsoleFTLAttemptEvent ev)
     {
-        if (!RuleAdded)
-            return;
-
-        var winText = Loc.GetString($"nukeops-{_winType.ToString().ToLower()}");
-
-        ev.AddLine(winText);
-
-        foreach (var cond in _winConditions)
+        var query = QueryActiveRules();
+        while (query.MoveNext(out var uid, out _, out var nukeops, out _))
         {
-            var text = Loc.GetString($"nukeops-cond-{cond.ToString().ToLower()}");
+            if (ev.Uid != GetShuttle((uid, nukeops)))
+                continue;
 
-            ev.AddLine(text);
+            if (nukeops.WarDeclaredTime != null)
+            {
+                var timeAfterDeclaration = Timing.CurTime.Subtract(nukeops.WarDeclaredTime.Value);
+                var timeRemain = nukeops.WarNukieArriveDelay.Subtract(timeAfterDeclaration);
+                if (timeRemain > TimeSpan.Zero)
+                {
+                    ev.Cancelled = true;
+                    ev.Reason = Loc.GetString("war-ops-infiltrator-unavailable",
+                        ("time", timeRemain.ToString("mm\\:ss")));
+                    continue;
+                }
+            }
+
+            nukeops.LeftOutpost = true;
         }
+    }
 
-        ev.AddLine(Loc.GetString("nukeops-list-start"));
-        foreach (var nukeop in _operativePlayers)
+    private void OnShuttleCallAttempt(ref CommunicationConsoleCallShuttleAttemptEvent ev)
+    {
+        var query = QueryActiveRules();
+        while (query.MoveNext(out _, out _, out var nukeops, out _))
         {
-            ev.AddLine($"- {nukeop.Name}");
+            // Can't call while war nukies are preparing to arrive
+            if (nukeops is { WarDeclaredTime: not null })
+            {
+                // Nukies must wait some time after declaration of war to get on the station
+                var warTime = Timing.CurTime.Subtract(nukeops.WarDeclaredTime.Value);
+                if (warTime < nukeops.WarEvacShuttleDisabled)
+                {
+                    ev.Cancelled = true;
+                    ev.Reason = Loc.GetString("war-ops-shuttle-call-unavailable");
+                    return;
+                }
+            }
         }
+    }
+
+    private void OnWarDeclared(ref WarDeclaredEvent ev)
+    {
+        // TODO: this is VERY awful for multi-nukies
+        var query = QueryActiveRules();
+        while (query.MoveNext(out var uid, out _, out var nukeops, out _))
+        {
+            if (nukeops.WarDeclaredTime != null)
+                continue;
+
+            if (TryComp<RuleGridsComponent>(uid, out var grids) && Transform(ev.DeclaratorEntity).MapID != grids.Map)
+                continue;
+
+            var newStatus = GetWarCondition(nukeops, ev.Status);
+            ev.Status = newStatus;
+            if (newStatus == WarConditionStatus.WarReady)
+            {
+                nukeops.WarDeclaredTime = Timing.CurTime;
+                var timeRemain = nukeops.WarNukieArriveDelay + Timing.CurTime;
+                ev.DeclaratorEntity.Comp.ShuttleDisabledTime = timeRemain;
+
+                DistributeExtraTc((uid, nukeops));
+            }
+        }
+    }
+
+    #endregion Event Handlers
+
+    /// <summary>
+    ///     Returns conditions for war declaration
+    /// </summary>
+    public WarConditionStatus GetWarCondition(NukeopsRuleComponent nukieRule, WarConditionStatus? oldStatus)
+    {
+        if (!nukieRule.CanEnableWarOps)
+            return WarConditionStatus.NoWarUnknown;
+
+        if (EntityQuery<NukeopsRoleComponent>().Count() < nukieRule.WarDeclarationMinOps)
+            return WarConditionStatus.NoWarSmallCrew;
+
+        if (nukieRule.LeftOutpost)
+            return WarConditionStatus.NoWarShuttleDeparted;
+
+        if (oldStatus == WarConditionStatus.YesWar)
+            return WarConditionStatus.WarReady;
+
+        return WarConditionStatus.YesWar;
+    }
+
+    private void DistributeExtraTc(Entity<NukeopsRuleComponent> nukieRule)
+    {
+        var enumerator = EntityQueryEnumerator<StoreComponent>();
+        while (enumerator.MoveNext(out var uid, out var component))
+        {
+            if (!_tag.HasTag(uid, NukeOpsUplinkTagPrototype))
+                continue;
+
+            if (GetOutpost(nukieRule.Owner) is not { } outpost)
+                continue;
+
+            if (Transform(uid).MapID != Transform(outpost).MapID) // Will receive bonus TC only on their start outpost
+                continue;
+
+            _store.TryAddCurrency(new() { { TelecrystalCurrencyPrototype, nukieRule.Comp.WarTcAmountPerNukie } }, uid, component);
+
+            var msg = Loc.GetString("store-currency-war-boost-given", ("target", uid));
+            _popupSystem.PopupEntity(msg, uid);
+        }
+    }
+
+    private void SetWinType(Entity<NukeopsRuleComponent> ent, WinType type, bool endRound = true)
+    {
+        ent.Comp.WinType = type;
+
+        if (endRound && (type == WinType.CrewMajor || type == WinType.OpsMajor))
+            _roundEndSystem.EndRound();
     }
 
     private void CheckRoundShouldEnd()
     {
-        if (!RuleAdded || RuleWinType == WinType.CrewMajor || RuleWinType == WinType.OpsMajor)
+        var query = QueryActiveRules();
+        while (query.MoveNext(out var uid, out _, out var nukeops, out _))
+        {
+            CheckRoundShouldEnd((uid, nukeops));
+        }
+    }
+
+    private void CheckRoundShouldEnd(Entity<NukeopsRuleComponent> ent)
+    {
+        var nukeops = ent.Comp;
+
+        if (nukeops.RoundEndBehavior == RoundEndBehavior.Nothing || nukeops.WinType == WinType.CrewMajor || nukeops.WinType == WinType.OpsMajor)
             return;
+
 
         // If there are any nuclear bombs that are active, immediately return. We're not over yet.
         foreach (var nuke in EntityQuery<NukeComponent>())
         {
             if (nuke.Status == NukeStatus.ARMED)
-            {
                 return;
-            }
         }
 
-        MapId? shuttleMapId = EntityManager.EntityExists(_nukieShuttle)
-            ? Transform(_nukieShuttle!.Value).MapID
+        var shuttle = GetShuttle((ent, ent));
+
+        MapId? shuttleMapId = Exists(shuttle)
+            ? Transform(shuttle.Value).MapID
             : null;
 
         MapId? targetStationMap = null;
-        if (_targetStation != null && TryComp(_targetStation, out StationDataComponent? data))
+        if (nukeops.TargetStation != null && TryComp(nukeops.TargetStation, out StationDataComponent? data))
         {
             var grid = data.Grids.FirstOrNull();
             targetStationMap = grid != null
@@ -416,443 +442,82 @@ public sealed class NukeopsRuleSystem : GameRuleSystem
         // If there are, the round can continue.
         var operatives = EntityQuery<NukeOperativeComponent, MobStateComponent, TransformComponent>(true);
         var operativesAlive = operatives
-            .Where(ent =>
-                ent.Item3.MapID == shuttleMapId
-                || ent.Item3.MapID == targetStationMap)
-            .Any(ent => ent.Item2.CurrentState == DamageState.Alive && ent.Item1.Running);
+            .Where(op =>
+                op.Item3.MapID == shuttleMapId
+                || op.Item3.MapID == targetStationMap)
+            .Any(op => op.Item2.CurrentState == MobState.Alive && op.Item1.Running);
 
         if (operativesAlive)
             return; // There are living operatives than can access the shuttle, or are still on the station's map.
 
         // Check that there are spawns available and that they can access the shuttle.
         var spawnsAvailable = EntityQuery<NukeOperativeSpawnerComponent>(true).Any();
-        if (spawnsAvailable && shuttleMapId == _nukiePlanet)
+        if (spawnsAvailable && CompOrNull<RuleGridsComponent>(ent)?.Map == shuttleMapId)
             return; // Ghost spawns can still access the shuttle. Continue the round.
 
         // The shuttle is inaccessible to both living nuke operatives and yet to spawn nuke operatives,
         // and there are no nuclear operatives on the target station's map.
-        if (spawnsAvailable)
-        {
-            _winConditions.Add(WinCondition.NukiesAbandoned);
-        }
-        else
-        {
-            _winConditions.Add(WinCondition.AllNukiesDead);
-        }
+        nukeops.WinConditions.Add(spawnsAvailable
+            ? WinCondition.NukiesAbandoned
+            : WinCondition.AllNukiesDead);
 
-        RuleWinType = WinType.CrewMajor;
+        SetWinType(ent, WinType.CrewMajor, false);
+        _roundEndSystem.DoRoundEndBehavior(nukeops.RoundEndBehavior,
+            nukeops.EvacShuttleTime,
+            nukeops.RoundEndTextSender,
+            nukeops.RoundEndTextShuttleCall,
+            nukeops.RoundEndTextAnnouncement);
+
+        // prevent it called multiple times
+        nukeops.RoundEndBehavior = RoundEndBehavior.Nothing;
     }
 
-    private void OnNukeDisarm(NukeDisarmSuccessEvent ev)
+    private void OnAfterAntagEntSelected(Entity<NukeopsRuleComponent> ent, ref AfterAntagEntitySelectedEvent args)
     {
-        CheckRoundShouldEnd();
+        var target = (ent.Comp.TargetStation is not null) ? Name(ent.Comp.TargetStation.Value) : "the target";
+
+        _antag.SendBriefing(args.Session,
+            Loc.GetString("nukeops-welcome",
+                ("station", target),
+                ("name", Name(ent))),
+            Color.Red,
+            ent.Comp.GreetSoundNotification);
     }
 
-    private void OnMobStateChanged(EntityUid uid, NukeOperativeComponent component, MobStateChangedEvent ev)
+    private void OnGetBriefing(Entity<NukeopsRoleComponent> role, ref GetBriefingEvent args)
     {
-        if(ev.CurrentMobState == DamageState.Dead)
-            CheckRoundShouldEnd();
+        // TODO Different character screen briefing for the 3 nukie types
+        args.Append(Loc.GetString("nukeops-briefing"));
     }
 
-    private void OnPlayersSpawning(RulePlayerSpawningEvent ev)
+    /// <remarks>
+    /// Is this method the shitty glue holding together the last of my sanity? yes.
+    /// Do i have a better solution? not presently.
+    /// </remarks>
+    private EntityUid? GetOutpost(Entity<RuleGridsComponent?> ent)
     {
-        if (!RuleAdded)
-            return;
+        if (!Resolve(ent, ref ent.Comp, false))
+            return null;
 
-        // Basically copied verbatim from traitor code
-        var playersPerOperative = _nukeopsRuleConfig.PlayersPerOperative;
-        var maxOperatives = _nukeopsRuleConfig.MaxOperatives;
-
-        var everyone = new List<IPlayerSession>(ev.PlayerPool);
-        var prefList = new List<IPlayerSession>();
-        var cmdrPrefList = new List<IPlayerSession>();
-        var operatives = new List<IPlayerSession>();
-
-        // The LINQ expression ReSharper keeps suggesting is completely unintelligible so I'm disabling it
-        // ReSharper disable once ForeachCanBeConvertedToQueryUsingAnotherGetEnumerator
-        foreach (var player in everyone)
-        {
-            if (!ev.Profiles.ContainsKey(player.UserId))
-            {
-                continue;
-            }
-            var profile = ev.Profiles[player.UserId];
-            if (profile.AntagPreferences.Contains(_nukeopsRuleConfig.OperativeRoleProto))
-            {
-                prefList.Add(player);
-            }
-            if (profile.AntagPreferences.Contains(_nukeopsRuleConfig.CommanderRolePrototype))
-            {
-                cmdrPrefList.Add(player);
-            }
-        }
-
-        var numNukies = MathHelper.Clamp(ev.PlayerPool.Count / playersPerOperative, 1, maxOperatives);
-
-        for (var i = 0; i < numNukies; i++)
-        {
-            IPlayerSession nukeOp;
-            // Only one commander, so we do it at the start
-            if (i == 0)
-            {
-                if (cmdrPrefList.Count == 0)
-                {
-                    if (prefList.Count == 0)
-                    {
-                        if (everyone.Count == 0)
-                        {
-                            Logger.InfoS("preset", "Insufficient ready players to fill up with nukeops, stopping the selection");
-                            break;
-                        }
-                        nukeOp = _random.PickAndTake(everyone);
-                        Logger.InfoS("preset", "Insufficient preferred nukeop commanders or nukies, picking at random.");
-                    }
-                    else
-                    {
-                        nukeOp = _random.PickAndTake(prefList);
-                        everyone.Remove(nukeOp);
-                        Logger.InfoS("preset", "Insufficient preferred nukeop commanders, picking at random from regular op list.");
-                    }
-                }
-                else
-                {
-                    nukeOp = _random.PickAndTake(cmdrPrefList);
-                    everyone.Remove(nukeOp);
-                    prefList.Remove(nukeOp);
-                    Logger.InfoS("preset", "Selected a preferred nukeop commander.");
-                }
-            }
-            else
-            {
-                if (prefList.Count == 0)
-                {
-                    if (everyone.Count == 0)
-                    {
-                        Logger.InfoS("preset", "Insufficient ready players to fill up with nukeops, stopping the selection");
-                        break;
-                    }
-                    nukeOp = _random.PickAndTake(everyone);
-                    Logger.InfoS("preset", "Insufficient preferred nukeops, picking at random.");
-                }
-                else
-                {
-                    nukeOp = _random.PickAndTake(prefList);
-                    everyone.Remove(nukeOp);
-                    Logger.InfoS("preset", "Selected a preferred nukeop.");
-                }
-            }
-            operatives.Add(nukeOp);
-        }
-
-        SpawnOperatives(numNukies, operatives, false);
-
-        foreach(var session in operatives)
-        {
-            ev.PlayerPool.Remove(session);
-            GameTicker.PlayerJoinGame(session);
-            _operativePlayers.Add(session);
-        }
+        return ent.Comp.MapGrids.Where(e => !HasComp<NukeOpsShuttleComponent>(e)).FirstOrNull();
     }
 
-    private void OnPlayersGhostSpawning(EntityUid uid, NukeOperativeComponent component, GhostRoleSpawnerUsedEvent args)
+    /// <remarks>
+    /// Is this method the shitty glue holding together the last of my sanity? yes.
+    /// Do i have a better solution? not presently.
+    /// </remarks>
+    private EntityUid? GetShuttle(Entity<NukeopsRuleComponent?> ent)
     {
-        var spawner = args.Spawner;
+        if (!Resolve(ent, ref ent.Comp, false))
+            return null;
 
-        if (!TryComp<NukeOperativeSpawnerComponent>(spawner, out var nukeOpSpawner))
-            return;
+        var query = EntityQueryEnumerator<NukeOpsShuttleComponent>();
+        while (query.MoveNext(out var uid, out var comp))
+        {
+            if (comp.AssociatedRule == ent.Owner)
+                return uid;
+        }
 
-        HumanoidCharacterProfile? profile = null;
-        if (TryComp(args.Spawned, out ActorComponent? actor))
-            profile = _prefs.GetPreferences(actor.PlayerSession.UserId).SelectedCharacter as HumanoidCharacterProfile;
-
-        SetupOperativeEntity(uid, nukeOpSpawner.OperativeName, nukeOpSpawner.OperativeStartingGear, profile);
-
-        _operativeMindPendingData.Add(uid, nukeOpSpawner.OperativeRolePrototype);
+        return null;
     }
-
-    private void OnMindAdded(EntityUid uid, NukeOperativeComponent component, MindAddedMessage args)
-    {
-        if (!TryComp<MindComponent>(uid, out var mindComponent) || mindComponent.Mind == null)
-            return;
-
-        var mind = mindComponent.Mind;
-
-        if (_operativeMindPendingData.TryGetValue(uid, out var role))
-        {
-            mind.AddRole(new TraitorRole(mind, _prototypeManager.Index<AntagPrototype>(role)));
-            _operativeMindPendingData.Remove(uid);
-        }
-
-        if (!mind.TryGetSession(out var playerSession))
-            return;
-
-        _operativePlayers.Add(playerSession);
-
-        if (_ticker.RunLevel != GameRunLevel.InRound)
-            return;
-
-        if (_nukeopsRuleConfig.GreetSound != null)
-            _audioSystem.PlayGlobal(_nukeopsRuleConfig.GreetSound, Filter.Empty().AddPlayer(playerSession));
-
-        if (_targetStation != null && !string.IsNullOrEmpty(Name(_targetStation.Value)))
-            _chatManager.DispatchServerMessage(playerSession, Loc.GetString("nukeops-welcome", ("station", _targetStation.Value)));
-    }
-
-    private bool SpawnMap()
-    {
-        if (_nukiePlanet != null)
-            return true; // Map is already loaded.
-
-        var path = _nukeopsRuleConfig.NukieOutpostMap;
-        var shuttlePath = _nukeopsRuleConfig.NukieShuttleMap;
-        if (path == null)
-        {
-            Logger.ErrorS("nukies", "No station map specified for nukeops!");
-            return false;
-        }
-
-        if (shuttlePath == null)
-        {
-            Logger.ErrorS("nukies", "No shuttle map specified for nukeops!");
-            return false;
-        }
-
-        var mapId = _mapManager.CreateMap();
-
-        var outpostGrids = _map.LoadMap(mapId, path.ToString());
-        if (outpostGrids.Count == 0)
-        {
-            Logger.ErrorS("nukies", $"Error loading map {path} for nukies!");
-            return false;
-        }
-
-        // Assume the first grid is the outpost grid.
-        _nukieOutpost = outpostGrids[0];
-
-        // Listen I just don't want it to overlap.
-        var shuttleId = _map.LoadGrid(mapId, shuttlePath.ToString(), new MapLoadOptions()
-        {
-            Offset = Vector2.One * 1000f,
-        });
-
-        // Naughty, someone saved the shuttle as a map.
-        if (Deleted(shuttleId))
-        {
-            Logger.ErrorS("nukeops", $"Tried to load nukeops shuttle as a map, aborting.");
-            _mapManager.DeleteMap(mapId);
-            return false;
-        }
-
-        if (TryComp<ShuttleComponent>(shuttleId, out var shuttle))
-        {
-            IoCManager.Resolve<IEntitySystemManager>().GetEntitySystem<ShuttleSystem>().TryFTLDock(shuttle, _nukieOutpost.Value);
-        }
-
-        _nukiePlanet = mapId;
-        _nukieShuttle = shuttleId;
-
-        return true;
-    }
-
-    private (string Name, string Role, string Gear) GetOperativeSpawnDetails(int spawnNumber)
-    {
-        string name;
-        string role;
-        string gear;
-
-        // Spawn the Commander then Agent first.
-        switch (spawnNumber)
-        {
-            case 0:
-                name = Loc.GetString("nukeops-role-commander") + " " + _random.PickAndTake(_operativeNames[_nukeopsRuleConfig.EliteNames]);
-                role = _nukeopsRuleConfig.CommanderRolePrototype;
-                gear = _nukeopsRuleConfig.CommanderStartGearPrototype;
-                break;
-            case 1:
-                name = Loc.GetString("nukeops-role-agent") + " " + _random.PickAndTake(_operativeNames[_nukeopsRuleConfig.NormalNames]);
-                role = _nukeopsRuleConfig.OperativeRoleProto;
-                gear = _nukeopsRuleConfig.MedicStartGearPrototype;
-                break;
-            default:
-                name = Loc.GetString("nukeops-role-operator") + " " + _random.PickAndTake(_operativeNames[_nukeopsRuleConfig.NormalNames]);
-                role = _nukeopsRuleConfig.OperativeRoleProto;
-                gear = _nukeopsRuleConfig.OperativeStartGearPrototype;
-                break;
-        }
-
-        return (name, role, gear);
-    }
-
-    /// <summary>
-    ///     Adds missing nuke operative components, equips starting gear and renames the entity.
-    /// </summary>
-    private void SetupOperativeEntity(EntityUid mob, string name, string gear, HumanoidCharacterProfile? profile)
-    {
-        MetaData(mob).EntityName = name;
-        EntityManager.EnsureComponent<RandomHumanoidAppearanceComponent>(mob);
-        EntityManager.EnsureComponent<NukeOperativeComponent>(mob);
-
-        if(_startingGearPrototypes.TryGetValue(gear, out var gearPrototype))
-            _stationSpawningSystem.EquipStartingGear(mob, gearPrototype, profile);
-
-        _faction.RemoveFaction(mob, "NanoTrasen", false);
-        _faction.AddFaction(mob, "Syndicate", true);
-    }
-
-    private void SpawnOperatives(int spawnCount, List<IPlayerSession> sessions, bool addSpawnPoints)
-    {
-        if (_nukieOutpost == null)
-            return;
-
-        var outpostUid = _nukieOutpost.Value;
-        var spawns = new List<EntityCoordinates>();
-
-        // Forgive me for hardcoding prototypes
-        foreach (var (_, meta, xform) in EntityManager.EntityQuery<SpawnPointComponent, MetaDataComponent, TransformComponent>(true))
-        {
-            if (meta.EntityPrototype?.ID != _nukeopsRuleConfig.SpawnPointPrototype)
-                continue;
-
-            if (xform.ParentUid != _nukieOutpost)
-                continue;
-
-            spawns.Add(xform.Coordinates);
-            break;
-        }
-
-        if (spawns.Count == 0)
-        {
-            spawns.Add(EntityManager.GetComponent<TransformComponent>(outpostUid).Coordinates);
-            Logger.WarningS("nukies", $"Fell back to default spawn for nukies!");
-        }
-
-        // TODO: This should spawn the nukies in regardless and transfer if possible; rest should go to shot roles.
-        for(var i = 0; i < spawnCount; i++)
-        {
-            var spawnDetails = GetOperativeSpawnDetails(i);
-            var nukeOpsAntag = _prototypeManager.Index<AntagPrototype>(spawnDetails.Role);
-
-            if (sessions.TryGetValue(i, out var session))
-            {
-                var mob = _randomHumanoid.SpawnRandomHumanoid(_nukeopsRuleConfig.RandomHumanoidSettingsPrototype, _random.Pick(spawns), string.Empty);
-                var profile = _prefs.GetPreferences(session.UserId).SelectedCharacter as HumanoidCharacterProfile;
-                SetupOperativeEntity(mob, spawnDetails.Name, spawnDetails.Gear, profile);
-
-                var newMind = new Mind.Mind(session.UserId)
-                {
-                    CharacterName = spawnDetails.Name
-                };
-                newMind.ChangeOwningPlayer(session.UserId);
-                newMind.AddRole(new TraitorRole(newMind, nukeOpsAntag));
-
-                newMind.TransferTo(mob);
-            }
-            else if (addSpawnPoints)
-            {
-                var spawnPoint = EntityManager.SpawnEntity(_nukeopsRuleConfig.GhostSpawnPointProto, _random.Pick(spawns));
-                var spawner = EnsureComp<GhostRoleMobSpawnerComponent>(spawnPoint);
-                spawner.RoleName = nukeOpsAntag.Name;
-                spawner.RoleDescription = nukeOpsAntag.Objective;
-
-                var nukeOpSpawner = EnsureComp<NukeOperativeSpawnerComponent>(spawnPoint);
-                nukeOpSpawner.OperativeName = spawnDetails.Name;
-                nukeOpSpawner.OperativeRolePrototype = spawnDetails.Role;
-                nukeOpSpawner.OperativeStartingGear = spawnDetails.Gear;
-            }
-        }
-    }
-
-    private void SpawnOperativesForGhostRoles()
-    {
-        // Basically copied verbatim from traitor code
-        var playersPerOperative = _nukeopsRuleConfig.PlayersPerOperative;
-        var maxOperatives = _nukeopsRuleConfig.MaxOperatives;
-
-        var playerPool = _playerSystem.ServerSessions.ToList();
-        var numNukies = MathHelper.Clamp(playerPool.Count / playersPerOperative, 1, maxOperatives);
-
-        var operatives = new List<IPlayerSession>();
-        SpawnOperatives(numNukies, operatives, true);
-    }
-
-    //For admins forcing someone to nukeOps.
-    public void MakeLoneNukie(Mind.Mind mind)
-    {
-        if (!mind.OwnedEntity.HasValue)
-            return;
-
-        mind.AddRole(new TraitorRole(mind, _prototypeManager.Index<AntagPrototype>(_nukeopsRuleConfig.OperativeRoleProto)));
-        SetOutfitCommand.SetOutfit(mind.OwnedEntity.Value, "SyndicateOperativeGearFull", EntityManager);
-    }
-
-    private void OnStartAttempt(RoundStartAttemptEvent ev)
-    {
-        if (!RuleAdded || Configuration is not NukeopsRuleConfiguration nukeOpsConfig)
-            return;
-
-        _nukeopsRuleConfig = nukeOpsConfig;
-
-        var minPlayers = nukeOpsConfig.MinPlayers;
-        if (!ev.Forced && ev.Players.Length < minPlayers)
-        {
-            _chatManager.DispatchServerAnnouncement(Loc.GetString("nukeops-not-enough-ready-players", ("readyPlayersCount", ev.Players.Length), ("minimumPlayers", minPlayers)));
-            ev.Cancel();
-            return;
-        }
-
-        if (ev.Players.Length != 0)
-            return;
-
-        _chatManager.DispatchServerAnnouncement(Loc.GetString("nukeops-no-one-ready"));
-        ev.Cancel();
-    }
-
-    public override void Started()
-    {
-        RuleWinType = WinType.Neutral;
-        _winConditions.Clear();
-        _nukieOutpost = null;
-        _nukiePlanet = null;
-
-        _startingGearPrototypes.Clear();
-        _operativeNames.Clear();
-        _operativeMindPendingData.Clear();
-        _operativePlayers.Clear();
-
-        // TODO: Loot table or something
-        foreach (var proto in new[]
-                 {
-                     _nukeopsRuleConfig.CommanderStartGearPrototype,
-                     _nukeopsRuleConfig.MedicStartGearPrototype,
-                     _nukeopsRuleConfig.OperativeStartGearPrototype
-                 })
-        {
-            _startingGearPrototypes.Add(proto, _prototypeManager.Index<StartingGearPrototype>(proto));
-        }
-
-        foreach (var proto in new[] { _nukeopsRuleConfig.EliteNames, _nukeopsRuleConfig.NormalNames })
-        {
-            _operativeNames.Add(proto, new List<string>(_prototypeManager.Index<DatasetPrototype>(proto).Values));
-        }
-
-
-        if (!SpawnMap())
-        {
-            Logger.InfoS("nukies", "Failed to load map for nukeops");
-            return;
-        }
-
-        // Add pre-existing nuke operatives to the credit list.
-        var query = EntityQuery<NukeOperativeComponent, MindComponent>(true);
-        foreach (var (_, mindComp) in query)
-        {
-            if (mindComp.Mind?.TryGetSession(out var session) == true)
-                _operativePlayers.Add(session);
-        }
-
-        if (GameTicker.RunLevel == GameRunLevel.InRound)
-            SpawnOperativesForGhostRoles();
-    }
-
-    public override void Ended() { }
 }

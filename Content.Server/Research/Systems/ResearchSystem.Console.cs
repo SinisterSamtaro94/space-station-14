@@ -1,74 +1,124 @@
 using Content.Server.Power.EntitySystems;
 using Content.Server.Research.Components;
+using Content.Shared.UserInterface;
+using Content.Shared.Access.Components;
+using Content.Shared.Emag.Components;
+using Content.Shared.Emag.Systems;
+using Content.Shared.IdentityManagement;
 using Content.Shared.Research.Components;
 using Content.Shared.Research.Prototypes;
-using Robust.Server.Player;
 
-namespace Content.Server.Research;
+namespace Content.Server.Research.Systems;
 
 public sealed partial class ResearchSystem
 {
+    [Dependency] private readonly EmagSystem _emag = default!;
+
     private void InitializeConsole()
     {
         SubscribeLocalEvent<ResearchConsoleComponent, ConsoleUnlockTechnologyMessage>(OnConsoleUnlock);
-        SubscribeLocalEvent<ResearchConsoleComponent, ConsoleServerSyncMessage>(OnConsoleSync);
-        SubscribeLocalEvent<ResearchConsoleComponent, ConsoleServerSelectionMessage>(OnConsoleSelect);
-    }
-
-    private void OnConsoleSelect(EntityUid uid, ResearchConsoleComponent component, ConsoleServerSelectionMessage args)
-    {
-        if (!HasComp<TechnologyDatabaseComponent>(uid) ||
-            !HasComp<ResearchClientComponent>(uid) ||
-            !this.IsPowered(uid, EntityManager))
-            return;
-
-        _uiSystem.TryOpen(uid, ResearchClientUiKey.Key, (IPlayerSession) args.Session);
-    }
-
-    private void OnConsoleSync(EntityUid uid, ResearchConsoleComponent component, ConsoleServerSyncMessage args)
-    {
-        if (!TryComp<TechnologyDatabaseComponent>(uid, out var database) ||
-            !HasComp<ResearchClientComponent>(uid) ||
-            !this.IsPowered(uid, EntityManager))
-            return;
-
-        SyncWithServer(database);
-        UpdateConsoleInterface(component);
+        SubscribeLocalEvent<ResearchConsoleComponent, BeforeActivatableUIOpenEvent>(OnConsoleBeforeUiOpened);
+        SubscribeLocalEvent<ResearchConsoleComponent, ResearchServerPointsChangedEvent>(OnPointsChanged);
+        SubscribeLocalEvent<ResearchConsoleComponent, ResearchRegistrationChangedEvent>(OnConsoleRegistrationChanged);
+        SubscribeLocalEvent<ResearchConsoleComponent, TechnologyDatabaseModifiedEvent>(OnConsoleDatabaseModified);
+        SubscribeLocalEvent<ResearchConsoleComponent, TechnologyDatabaseSynchronizedEvent>(OnConsoleDatabaseSynchronized);
+        SubscribeLocalEvent<ResearchConsoleComponent, GotEmaggedEvent>(OnEmagged);
     }
 
     private void OnConsoleUnlock(EntityUid uid, ResearchConsoleComponent component, ConsoleUnlockTechnologyMessage args)
     {
-        if (!TryComp<TechnologyDatabaseComponent>(uid, out var database) ||
-            !TryComp<ResearchClientComponent>(uid, out var client) ||
-            !this.IsPowered(uid, EntityManager))
+        var act = args.Actor;
+
+        if (!this.IsPowered(uid, EntityManager))
             return;
 
-        if (!_prototypeManager.TryIndex(args.Id, out TechnologyPrototype? tech) ||
-            client.Server == null ||
-            !CanUnlockTechnology(client.Server, tech)) return;
+        if (!PrototypeManager.TryIndex<TechnologyPrototype>(args.Id, out var technologyPrototype))
+            return;
 
-        if (!UnlockTechnology(client.Server, tech)) return;
+        if (TryComp<AccessReaderComponent>(uid, out var access) && !_accessReader.IsAllowed(act, uid, access))
+        {
+            _popup.PopupEntity(Loc.GetString("research-console-no-access-popup"), act);
+            return;
+        }
 
-        SyncWithServer(database);
-        Dirty(database);
-        UpdateConsoleInterface(component);
+        if (!UnlockTechnology(uid, args.Id, act))
+            return;
+
+        if (!_emag.CheckFlag(uid, EmagType.Interaction))
+        {
+            var getIdentityEvent = new TryGetIdentityShortInfoEvent(uid, act);
+            RaiseLocalEvent(getIdentityEvent);
+
+            var message = Loc.GetString(
+                "research-console-unlock-technology-radio-broadcast",
+                ("technology", Loc.GetString(technologyPrototype.Name)),
+                ("amount", technologyPrototype.Cost),
+                ("approver", getIdentityEvent.Title ?? string.Empty)
+            );
+            _radio.SendRadioMessage(uid, message, component.AnnouncementChannel, uid, escapeMarkup: false);
+        }
+
+        SyncClientWithServer(uid);
+        UpdateConsoleInterface(uid, component);
     }
 
-    private void UpdateConsoleInterface(ResearchConsoleComponent component, ResearchClientComponent? clientComponent = null)
+    private void OnConsoleBeforeUiOpened(EntityUid uid, ResearchConsoleComponent component, BeforeActivatableUIOpenEvent args)
     {
+        SyncClientWithServer(uid);
+    }
+
+    private void UpdateConsoleInterface(EntityUid uid, ResearchConsoleComponent? component = null, ResearchClientComponent? clientComponent = null)
+    {
+        if (!Resolve(uid, ref component, ref clientComponent, false))
+            return;
+
         ResearchConsoleBoundInterfaceState state;
 
-        if (!Resolve(component.Owner, ref clientComponent, false) ||
-            clientComponent.Server == null)
+        if (TryGetClientServer(uid, out _, out var serverComponent, clientComponent))
         {
-            state = new ResearchConsoleBoundInterfaceState(default, default);
+            var points = clientComponent.ConnectedToServer ? serverComponent.Points : 0;
+            state = new ResearchConsoleBoundInterfaceState(points);
         }
         else
         {
-            var points = clientComponent.ConnectedToServer ? clientComponent.Server.Points : 0;
-            var pointsPerSecond = clientComponent.ConnectedToServer ? PointsPerSecond(clientComponent.Server) : 0;
-            state = new ResearchConsoleBoundInterfaceState(points, pointsPerSecond);
+            state = new ResearchConsoleBoundInterfaceState(default);
         }
-        _uiSystem.GetUiOrNull(component.Owner, ResearchConsoleUiKey.Key)?.SetState(state);
+
+        _uiSystem.SetUiState(uid, ResearchConsoleUiKey.Key, state);
+    }
+
+    private void OnPointsChanged(EntityUid uid, ResearchConsoleComponent component, ref ResearchServerPointsChangedEvent args)
+    {
+        if (!_uiSystem.IsUiOpen(uid, ResearchConsoleUiKey.Key))
+            return;
+        UpdateConsoleInterface(uid, component);
+    }
+
+    private void OnConsoleRegistrationChanged(EntityUid uid, ResearchConsoleComponent component, ref ResearchRegistrationChangedEvent args)
+    {
+        SyncClientWithServer(uid);
+        UpdateConsoleInterface(uid, component);
+    }
+
+    private void OnConsoleDatabaseModified(EntityUid uid, ResearchConsoleComponent component, ref TechnologyDatabaseModifiedEvent args)
+    {
+        SyncClientWithServer(uid);
+        UpdateConsoleInterface(uid, component);
+    }
+
+    private void OnConsoleDatabaseSynchronized(EntityUid uid, ResearchConsoleComponent component, ref TechnologyDatabaseSynchronizedEvent args)
+    {
+        UpdateConsoleInterface(uid, component);
+    }
+
+    private void OnEmagged(Entity<ResearchConsoleComponent> ent, ref GotEmaggedEvent args)
+    {
+        if (!_emag.CompareFlag(args.Type, EmagType.Interaction))
+            return;
+
+        if (_emag.CheckFlag(ent, EmagType.Interaction))
+            return;
+
+        args.Handled = true;
     }
 }

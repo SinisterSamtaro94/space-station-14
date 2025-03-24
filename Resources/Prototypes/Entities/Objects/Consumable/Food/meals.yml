@@ -1,3 +1,4 @@
+# When adding new food also add to random spawner located in Resources\Prototypes\Entities\Markers\Spawners\Random\Food_Drinks\food_meal.yml
 # A bunch of different meals. This stuff doesn't come off their plates because
 # it's assembled on them. Or they just don't have plates.
 
@@ -9,10 +10,11 @@
   abstract: true
   description: A delicious meal, cooked with love.
   components:
+  - type: Item
+    storedRotation: -90
   - type: Food
   - type: Sprite
     sprite: Objects/Consumable/Food/meals.rsi
-    netsync: false
   - type: SolutionContainerManager
     solutions:
       food:
@@ -78,7 +80,9 @@
       - salty
   - type: Sprite
     state: fries-carrot
-    netsync: false
+  - type: Tag
+    tags:
+    - CarrotFries
   - type: SolutionContainerManager
     solutions:
       food:
@@ -94,11 +98,25 @@
   id: FoodMealNachos
   description: Chips from Space Mexico.
   components:
+  - type: Food
+    trash:
+    - FoodPlateSmall
   - type: FlavorProfile
     flavors:
       - nachos
   - type: Sprite
     state: nachos
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 11
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 4
+        - ReagentId: Vitamin
+          Quantity: 1
+        - ReagentId: TableSalt
+          Quantity: 1
 # Tastes like nachos.
 
 - type: entity
@@ -107,6 +125,9 @@
   id: FoodMealNachosCheesy
   description: The delicious combination of nachos and melting cheese.
   components:
+  - type: Food
+    trash:
+    - FoodPlateSmall
   - type: FlavorProfile
     flavors:
       - nachos
@@ -132,24 +153,27 @@
   id: FoodMealNachosCuban
   description: That's some dangerously spicy nachos.
   components:
+  - type: Food
+    trash:
+    - FoodPlateSmall
   - type: FlavorProfile
     flavors:
       - nachos
-      - cheesy
+      - tomato
       - spicy
   - type: Sprite
     state: nachos-cuban
   - type: SolutionContainerManager
     solutions:
       food:
-        maxVol: 15
+        maxVol: 25
         reagents:
         - ReagentId: Nutriment
-          Quantity: 7
-        - ReagentId: CapsaicinOil
           Quantity: 8
+        - ReagentId: CapsaicinOil
+          Quantity: 7
         - ReagentId: Vitamin
-          Quantity: 4
+          Quantity: 5
 # Tastes like nachos, hot pepper.
 
 - type: entity
@@ -194,6 +218,9 @@
           Quantity: 6
         - ReagentId: Vitamin
           Quantity: 2
+  - type: Tag
+    tags:
+    - Fruit
 # Tastes like eggplant, cheese.
 
 - type: entity
@@ -232,6 +259,10 @@
           Quantity: 6
         - ReagentId: CarpoToxin
           Quantity: 3
+  - type: Tag
+    tags:
+    - CubanCarp
+    - Meat
 # Tastes like fish, batter, hot peppers.
 
 - type: entity
@@ -243,6 +274,7 @@
   - type: FlavorProfile
     flavors:
       - meaty
+      - cabbage
   - type: Sprite
     state: cornedbeef
   - type: SolutionContainerManager
@@ -254,6 +286,9 @@
           Quantity: 6
         - ReagentId: Vitamin
           Quantity: 4
+  - type: Tag
+    tags:
+    - Meat
 # Tastes like meat, cabbage.
 
 - type: entity
@@ -277,6 +312,9 @@
           Quantity: 2
         - ReagentId: Vitamin
           Quantity: 5
+  - type: Tag
+    tags:
+    - Meat
 # Tastes like meat, salmon.
 
 - type: entity
@@ -300,6 +338,9 @@
           Quantity: 6
         - ReagentId: Vitamin
           Quantity: 1
+  - type: Tag
+    tags:
+    - Meat
 # Tastes like meat, butter.
 
 - type: entity
@@ -308,6 +349,9 @@
   id: FoodMealRibs
   description: BBQ ribs, slathered in a healthy coating of BBQ sauce. The least vegan thing to ever exist.
   components:
+  - type: Food
+    trash: 
+    - FoodKebabSkewer
   - type: FlavorProfile
     flavors:
       - meaty
@@ -325,6 +369,9 @@
           Quantity: 10
         - ReagentId: BbqSauce
           Quantity: 10
+  - type: Tag
+    tags:
+    - Meat
 # Tastes like meat, smokey sauce.
 
 - type: entity
@@ -349,6 +396,9 @@
           Quantity: 6
         - ReagentId: Vitamin
           Quantity: 4
+  - type: Tag
+    tags:
+    - Meat
 # Tastes like eggs, bacon, bun.
 
 - type: entity
@@ -370,6 +420,9 @@
         reagents:
         - ReagentId: Nutriment
           Quantity: 9
+  - type: Tag
+    tags:
+    - Meat
 # Tastes like egg, cheese.
 
 - type: entity
@@ -396,6 +449,9 @@
           Quantity: 1
         - ReagentId: Blackpepper
           Quantity: 1
+  - type: Tag
+    tags:
+    - Meat
 # Tastes like egg, salt, pepper.
 
 - type: entity
@@ -426,7 +482,7 @@
   - type: SolutionContainerManager
     solutions:
       food:
-        maxVol: 15
+        maxVol: 20
         reagents:
         - ReagentId: Nutriment
           Quantity: 10
@@ -469,7 +525,7 @@
 # Its queso! Everyone loves queso... Right?.
 
 - type: entity
-  name: Sashimi
+  name: sashimi
   parent: FoodMealBase
   id: FoodMealSashimi
   description: Its taste can only be described as "Exotic". The poisoning though? That's pretty common.
@@ -482,12 +538,15 @@
   - type: SolutionContainerManager
     solutions:
       food:
-        maxVol: 18
+        maxVol: 25
         reagents:
         - ReagentId: Nutriment
           Quantity: 6
         - ReagentId: CarpoToxin
           Quantity: 15
+  - type: Tag
+    tags:
+    - Meat
 # tastes exotic
 
 - type: entity
@@ -504,10 +563,69 @@
     - type: SolutionContainerManager
       solutions:
         food:
-          maxVol: 10
+          maxVol: 15
           reagents:
           - ReagentId: Nutriment
             Quantity: 8
           - ReagentId: CapsaicinOil
             Quantity: 6
+    - type: Tag
+      tags:
+      - Meat
 # What do Europeans eat instead of enchiladas? 25.4 millimeter-iladas.
+
+- type: entity
+  name: melon fruit bowl
+  parent: FoodMealBase
+  id: FoodSaladWatermelonFruitBowl
+  description: The only salad where you can eat the bowl.
+  components:
+  - type: FlavorProfile
+    flavors:
+      - fruity
+      - sour
+  - type: Sprite
+    state: melonfruitbowl
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 65
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 30
+        - ReagentId: Vitamin
+          Quantity: 15
+        - ReagentId: Water
+          Quantity: 5
+        - ReagentId: Bicaridine
+          Quantity: 5
+        - ReagentId: Kelotane
+          Quantity: 5
+  - type: Tag
+    tags:
+    - Fruit
+
+- type: entity
+  name: corn in butter
+  parent: FoodMealBase
+  id: FoodMealCornInButter
+  description: Buttery.
+  components:
+  - type: Food
+    trash: 
+    - FoodPlate
+  - type: FlavorProfile
+    flavors:
+      - corn
+      - butter
+  - type: Sprite
+    state: corn-in-butter
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 10
+        reagents:
+        - ReagentId: Nutriment
+          Quantity: 4
+        - ReagentId: Vitamin
+          Quantity: 4

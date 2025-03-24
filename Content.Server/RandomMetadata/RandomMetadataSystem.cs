@@ -1,4 +1,5 @@
 ﻿using Content.Shared.Dataset;
+using Content.Shared.Random.Helpers;
 using JetBrains.Annotations;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Random;
@@ -9,6 +10,7 @@ public sealed class RandomMetadataSystem : EntitySystem
 {
     [Dependency] private readonly IPrototypeManager _prototype = default!;
     [Dependency] private readonly IRobustRandom _random = default!;
+    [Dependency] private readonly MetaDataSystem _metaData = default!;
 
     public override void Initialize()
     {
@@ -24,12 +26,13 @@ public sealed class RandomMetadataSystem : EntitySystem
 
         if (component.NameSegments != null)
         {
-            meta.EntityName = GetRandomFromSegments(component.NameSegments, component.NameSeparator);
+            _metaData.SetEntityName(uid, GetRandomFromSegments(component.NameSegments, component.NameSeparator), meta);
         }
 
         if (component.DescriptionSegments != null)
         {
-            meta.EntityDescription = GetRandomFromSegments(component.DescriptionSegments, component.DescriptionSeparator);
+            _metaData.SetEntityDescription(uid,
+                GetRandomFromSegments(component.DescriptionSegments, component.DescriptionSeparator), meta);
         }
     }
 
@@ -45,9 +48,22 @@ public sealed class RandomMetadataSystem : EntitySystem
         var outputSegments = new List<string>();
         foreach (var segment in segments)
         {
-            outputSegments.Add(_prototype.TryIndex<DatasetPrototype>(segment, out var proto)
-                ? _random.Pick(proto.Values)
-                : segment);
+            if (_prototype.TryIndex<LocalizedDatasetPrototype>(segment, out var localizedProto))
+            {
+                outputSegments.Add(_random.Pick(localizedProto));
+            }
+            else if (_prototype.TryIndex<DatasetPrototype>(segment, out var proto))
+            {
+                var random = _random.Pick(proto.Values);
+                if (Loc.TryGetString(random, out var localizedSegment))
+                    outputSegments.Add(localizedSegment);
+                else
+                    outputSegments.Add(random);
+            }
+            else if (Loc.TryGetString(segment, out var localizedSegment))
+                outputSegments.Add(localizedSegment);
+            else
+                outputSegments.Add(segment);
         }
         return string.Join(separator, outputSegments);
     }

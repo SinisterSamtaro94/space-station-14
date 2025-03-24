@@ -4,16 +4,15 @@ using Robust.Shared.Physics.Dynamics.Joints;
 namespace Content.Server.Shuttles.Components
 {
     [RegisterComponent]
-    public sealed class DockingComponent : SharedDockingComponent
+    public sealed partial class DockingComponent : SharedDockingComponent
     {
-        [ViewVariables]
         [DataField("dockedWith")]
         public EntityUid? DockedWith;
 
         [ViewVariables]
         public Joint? DockJoint;
 
-        [ViewVariables, DataField("dockJointId")]
+        [DataField("dockJointId")]
         public string? DockJointId;
 
         [ViewVariables]

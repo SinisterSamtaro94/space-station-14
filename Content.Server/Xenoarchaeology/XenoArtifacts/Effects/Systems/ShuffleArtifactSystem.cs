@@ -1,6 +1,6 @@
 ﻿using Content.Server.Xenoarchaeology.XenoArtifacts.Effects.Components;
 using Content.Server.Xenoarchaeology.XenoArtifacts.Events;
-using Content.Shared.MobState.Components;
+using Content.Shared.Mobs.Components;
 using Robust.Shared.Map;
 using Robust.Shared.Random;
 
@@ -10,6 +10,7 @@ public sealed class ShuffleArtifactSystem : EntitySystem
 {
     [Dependency] private readonly EntityLookupSystem _lookup = default!;
     [Dependency] private readonly IRobustRandom _random = default!;
+    [Dependency] private readonly SharedTransformSystem _xform = default!;
 
     /// <inheritdoc/>
     public override void Initialize()
@@ -21,8 +22,7 @@ public sealed class ShuffleArtifactSystem : EntitySystem
     {
         var mobState = GetEntityQuery<MobStateComponent>();
 
-        List<EntityCoordinates> allCoords = new();
-        List<TransformComponent> toShuffle = new();
+        List<Entity<TransformComponent>> toShuffle = new();
 
         foreach (var ent in _lookup.GetEntitiesInRange(uid, component.Radius, LookupFlags.Dynamic | LookupFlags.Sundries))
         {
@@ -31,13 +31,16 @@ public sealed class ShuffleArtifactSystem : EntitySystem
 
             var xform = Transform(ent);
 
-            toShuffle.Add(xform);
-            allCoords.Add(xform.Coordinates);
+            toShuffle.Add((ent, xform));
         }
 
-        foreach (var xform in toShuffle)
+        _random.Shuffle(toShuffle);
+
+        while (toShuffle.Count > 1)
         {
-            xform.Coordinates = _random.PickAndTake(allCoords);
+            var ent1 = _random.PickAndTake(toShuffle);
+            var ent2 = _random.PickAndTake(toShuffle);
+            _xform.SwapPositions((ent1, ent1), (ent2, ent2));
         }
     }
 }

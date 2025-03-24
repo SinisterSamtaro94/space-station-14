@@ -14,9 +14,6 @@
   - id: WeaponPistolViper
     amount: 0
     maxAmount: 5
-  - id: WeaponPistolHandmade
-    amount: 0
-    maxAmount: 5
   - id: WeaponPistolCobra
     amount: 0
     maxAmount: 5
@@ -61,14 +58,14 @@
   - id: WeaponShotgunSawn
     amount: 0
     maxAmount: 5
+  - id: WeaponShotgunHandmade
+    amount: 0
+    maxAmount: 5
 
   - id: WeaponSubMachineGunAtreides
     amount: 0
     maxAmount: 5
   - id: WeaponSubMachineGunC20r
-    amount: 0
-    maxAmount: 5
-  - id: WeaponSubMachineGunVector
     amount: 0
     maxAmount: 5
   - id: WeaponSubMachineGunWt550
@@ -137,17 +134,13 @@
     maxAmount: 15
   - id: MagazineLightRifle
     maxAmount: 15
-  - id: MagazinePistolCalicoTopMounted
-    maxAmount: 15
   - id: MagazineShotgun
     maxAmount: 15
   - id: MagazinePistol
     maxAmount: 15
   - id: MagazinePistolHighCapacity
     maxAmount: 15
-  - id: MagazineMagnum
-    maxAmount: 15
-  - id: MagazineMagnumSubMachineGun
+  - id: MagazinePistolSubMachineGun
     maxAmount: 15
   - id: CartridgeRocket
     maxAmount: 15

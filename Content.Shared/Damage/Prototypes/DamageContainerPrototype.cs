@@ -12,13 +12,13 @@ namespace Content.Shared.Damage.Prototypes
     ///     and damage groups. Currently this is only used to specify what damage types a <see
     ///     cref="DamageableComponent"/> should support.
     /// </remarks>
-    [Prototype("damageContainer")]
+    [Prototype]
     [Serializable, NetSerializable]
-    public sealed class DamageContainerPrototype : IPrototype
+    public sealed partial class DamageContainerPrototype : IPrototype
     {
         [ViewVariables]
-        [IdDataFieldAttribute]
-        public string ID { get; } = default!;
+        [IdDataField]
+        public string ID { get; private set; } = default!;
 
         /// <summary>
         ///     List of damage groups that are supported by this container.

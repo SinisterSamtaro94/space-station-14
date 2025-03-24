@@ -1,19 +1,22 @@
 using System.Linq;
-using Content.Server.Ghost.Components;
+using System.Numerics;
 using Content.Server.Warps;
 using Content.Shared.Administration;
 using Content.Shared.Follower;
-using Robust.Server.Player;
+using Content.Shared.Ghost;
 using Robust.Shared.Console;
 using Robust.Shared.Enums;
 using Robust.Shared.Map;
-using Robust.Shared.Physics;
+using Robust.Shared.Physics.Components;
+using Robust.Shared.Physics.Systems;
 
 namespace Content.Server.Administration.Commands
 {
     [AdminCommand(AdminFlags.Admin)]
     public sealed class WarpCommand : IConsoleCommand
     {
+        [Dependency] private readonly IEntityManager _entManager = default!;
+
         public string Command => "warp";
         public string Description => "Teleports you to predefined areas on the map.";
 
@@ -23,7 +26,7 @@ namespace Content.Server.Administration.Commands
 
         public void Execute(IConsoleShell shell, string argStr, string[] args)
         {
-            var player = shell.Player as IPlayerSession;
+            var player = shell.Player;
             if (player == null)
             {
                 shell.WriteLine("Only players can use this command");
@@ -36,11 +39,10 @@ namespace Content.Server.Administration.Commands
                 return;
             }
 
-            var entMan = IoCManager.Resolve<IEntityManager>();
             var location = args[0];
             if (location == "?")
             {
-                var locations = string.Join(", ", GetWarpPointNames(entMan));
+                var locations = string.Join(", ", GetWarpPointNames());
 
                 shell.WriteLine(locations);
             }
@@ -52,20 +54,17 @@ namespace Content.Server.Administration.Commands
                     return;
                 }
 
-                var mapManager = IoCManager.Resolve<IMapManager>();
-                var currentMap = entMan.GetComponent<TransformComponent>(playerEntity).MapID;
-                var currentGrid = entMan.GetComponent<TransformComponent>(playerEntity).GridUid;
+                var currentMap = _entManager.GetComponent<TransformComponent>(playerEntity).MapID;
+                var currentGrid = _entManager.GetComponent<TransformComponent>(playerEntity).GridUid;
 
-                var found = entMan.EntityQuery<WarpPointComponent>(true)
-                    .Where(p => p.Location == location)
-                    .Select(p => (entMan.GetComponent<TransformComponent>(p.Owner).Coordinates, p.Follow))
+                var found = GetWarpPointByName(location)
                     .OrderBy(p => p.Item1, Comparer<EntityCoordinates>.Create((a, b) =>
                     {
                         // Sort so that warp points on the same grid/map are first.
                         // So if you have two maps loaded with the same warp points,
                         // it will prefer the warp points on the map you're currently on.
-                        var aGrid = a.GetGridUid(entMan);
-                        var bGrid = b.GetGridUid(entMan);
+                        var aGrid = a.GetGridUid(_entManager);
+                        var bGrid = b.GetGridUid(_entManager);
 
                         if (aGrid == bGrid)
                         {
@@ -82,8 +81,8 @@ namespace Content.Server.Administration.Commands
                             return 1;
                         }
 
-                        var mapA = a.GetMapId(entMan);
-                        var mapB = a.GetMapId(entMan);
+                        var mapA = a.GetMapId(_entManager);
+                        var mapB = a.GetMapId(_entManager);
 
                         if (mapA == mapB)
                         {
@@ -112,37 +111,54 @@ namespace Content.Server.Administration.Commands
                     return;
                 }
 
-                if (follow && entMan.HasComponent<GhostComponent>(playerEntity))
+                if (follow && _entManager.HasComponent<GhostComponent>(playerEntity))
                 {
-                    entMan.EntitySysManager.GetEntitySystem<FollowerSystem>().StartFollowingEntity(playerEntity, coords.EntityId);
+                    _entManager.System<FollowerSystem>().StartFollowingEntity(playerEntity, coords.EntityId);
                     return;
                 }
 
-                var xform = entMan.GetComponent<TransformComponent>(playerEntity);
+                var xform = _entManager.GetComponent<TransformComponent>(playerEntity);
+                var xformSystem = _entManager.System<SharedTransformSystem>();
                 xform.Coordinates = coords;
-                xform.AttachToGridOrMap();
-                if (entMan.TryGetComponent(playerEntity, out IPhysBody? physics))
+                xformSystem.AttachToGridOrMap(playerEntity, xform);
+                if (_entManager.TryGetComponent(playerEntity, out PhysicsComponent? physics))
                 {
-                    physics.LinearVelocity = Vector2.Zero;
+                    _entManager.System<SharedPhysicsSystem>().SetLinearVelocity(playerEntity, Vector2.Zero, body: physics);
                 }
             }
         }
 
-        private static IEnumerable<string> GetWarpPointNames(IEntityManager entMan)
+        private IEnumerable<string> GetWarpPointNames()
         {
-            return entMan.EntityQuery<WarpPointComponent>(true)
-                .Select(p => p.Location)
-                .Where(p => p != null)
-                .OrderBy(p => p)
-                .Distinct()!;
+            List<string> points = new(_entManager.Count<WarpPointComponent>());
+            var query = _entManager.AllEntityQueryEnumerator<WarpPointComponent, MetaDataComponent>();
+            while (query.MoveNext(out _, out var warp, out var meta))
+            {
+                points.Add(warp.Location ?? meta.EntityName);
+            }
+
+            points.Sort();
+            return points;
+        }
+
+        private List<(EntityCoordinates, bool)> GetWarpPointByName(string name)
+        {
+            List<(EntityCoordinates, bool)> points = new();
+            var query = _entManager.AllEntityQueryEnumerator<WarpPointComponent, MetaDataComponent, TransformComponent>();
+            while (query.MoveNext(out var uid, out var warp, out var meta, out var xform))
+            {
+                if (name == (warp.Location ?? meta.EntityName))
+                    points.Add((xform.Coordinates, warp.Follow));
+            }
+
+            return points;
         }
 
         public CompletionResult GetCompletion(IConsoleShell shell, string[] args)
         {
             if (args.Length == 1)
             {
-                var ent = IoCManager.Resolve<IEntityManager>();
-                var options = new[] { "?" }.Concat(GetWarpPointNames(ent));
+                var options = new[] { "?" }.Concat(GetWarpPointNames());
 
                 return CompletionResult.FromHintOptions(options, "<warp point | ?>");
             }

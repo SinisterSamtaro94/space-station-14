@@ -1,10 +1,10 @@
 using Content.Server.Explosion.Components;
-using Content.Server.Sticky.Events;
 using Content.Shared.Examine;
-using Content.Shared.Popups;
+using Content.Shared.Explosion.Components;
 using Content.Shared.Interaction.Events;
+using Content.Shared.Popups;
+using Content.Shared.Sticky;
 using Content.Shared.Verbs;
-using Robust.Shared.Player;
 
 namespace Content.Server.Explosion.EntitySystems;
 
@@ -18,26 +18,20 @@ public sealed partial class TriggerSystem
         SubscribeLocalEvent<OnUseTimerTriggerComponent, ExaminedEvent>(OnExamined);
         SubscribeLocalEvent<OnUseTimerTriggerComponent, GetVerbsEvent<AlternativeVerb>>(OnGetAltVerbs);
         SubscribeLocalEvent<OnUseTimerTriggerComponent, EntityStuckEvent>(OnStuck);
+        SubscribeLocalEvent<RandomTimerTriggerComponent, MapInitEvent>(OnRandomTimerTriggerMapInit);
     }
 
-    private void OnStuck(EntityUid uid, OnUseTimerTriggerComponent component, EntityStuckEvent args)
+    private void OnStuck(EntityUid uid, OnUseTimerTriggerComponent component, ref EntityStuckEvent args)
     {
         if (!component.StartOnStick)
             return;
 
-        HandleTimerTrigger(
-            uid,
-            args.User,
-            component.Delay,
-            component.BeepInterval,
-            component.InitialBeepDelay,
-            component.BeepSound,
-            component.BeepParams);
+        StartTimer((uid, component), args.User);
     }
 
     private void OnExamined(EntityUid uid, OnUseTimerTriggerComponent component, ExaminedEvent args)
     {
-        if (args.IsInDetailsRange)
+        if (args.IsInDetailsRange && component.Examinable)
             args.PushText(Loc.GetString("examine-trigger-timer", ("time", component.Delay)));
     }
 
@@ -46,8 +40,27 @@ public sealed partial class TriggerSystem
     /// </summary>
     private void OnGetAltVerbs(EntityUid uid, OnUseTimerTriggerComponent component, GetVerbsEvent<AlternativeVerb> args)
     {
-        if (!args.CanInteract || !args.CanAccess)
+        if (!args.CanInteract || !args.CanAccess || args.Hands == null)
             return;
+
+        if (component.UseVerbInstead)
+        {
+            args.Verbs.Add(new AlternativeVerb()
+            {
+                Text = Loc.GetString("verb-start-detonation"),
+                Act = () => StartTimer((uid, component), args.User),
+                Priority = 2
+            });
+        }
+
+        if (component.AllowToggleStartOnStick)
+        {
+            args.Verbs.Add(new AlternativeVerb()
+            {
+                Text = Loc.GetString("verb-toggle-start-on-stick"),
+                Act = () => ToggleStartOnStick(uid, args.User, component)
+            });
+        }
 
         if (component.DelayOptions == null || component.DelayOptions.Count == 1)
             return;
@@ -83,19 +96,20 @@ public sealed partial class TriggerSystem
                 Act = () =>
                 {
                     component.Delay = option;
-                    _popupSystem.PopupEntity(Loc.GetString("popup-trigger-timer-set", ("time", option)), args.User, Filter.Entities(args.User));
+                    _popupSystem.PopupEntity(Loc.GetString("popup-trigger-timer-set", ("time", option)), args.User, args.User);
                 },
             });
         }
+    }
 
-        if (component.AllowToggleStartOnStick)
-        {
-            args.Verbs.Add(new AlternativeVerb()
-            {
-                Text = Loc.GetString("verb-toggle-start-on-stick"),
-                Act = () => ToggleStartOnStick(uid, args.User, component)
-            });
-        }
+    private void OnRandomTimerTriggerMapInit(Entity<RandomTimerTriggerComponent> ent, ref MapInitEvent args)
+    {
+        var (_, comp) = ent;
+
+        if (!TryComp<OnUseTimerTriggerComponent>(ent, out var timerTriggerComp))
+            return;
+
+        timerTriggerComp.Delay = _random.NextFloat(comp.Min, comp.Max);
     }
 
     private void CycleDelay(OnUseTimerTriggerComponent component, EntityUid user)
@@ -110,7 +124,7 @@ public sealed partial class TriggerSystem
         if (component.DelayOptions[^1] <= component.Delay)
         {
             component.Delay = component.DelayOptions[0];
-            _popupSystem.PopupEntity(Loc.GetString("popup-trigger-timer-set", ("time", component.Delay)), user, Filter.Entities(user));
+            _popupSystem.PopupEntity(Loc.GetString("popup-trigger-timer-set", ("time", component.Delay)), user, user);
             return;
         }
 
@@ -119,7 +133,7 @@ public sealed partial class TriggerSystem
             if (option > component.Delay)
             {
                 component.Delay = option;
-                _popupSystem.PopupEntity(Loc.GetString("popup-trigger-timer-set", ("time", option)), user, Filter.Entities(user));
+                _popupSystem.PopupEntity(Loc.GetString("popup-trigger-timer-set", ("time", option)), user, user);
                 return;
             }
         }
@@ -130,27 +144,24 @@ public sealed partial class TriggerSystem
         if (comp.StartOnStick)
         {
             comp.StartOnStick = false;
-            _popupSystem.PopupEntity(Loc.GetString("popup-start-on-stick-off"), grenade, Filter.Entities(user));
+            _popupSystem.PopupEntity(Loc.GetString("popup-start-on-stick-off"), grenade, user);
         }
         else
         {
             comp.StartOnStick = true;
-            _popupSystem.PopupEntity(Loc.GetString("popup-start-on-stick-on"), grenade, Filter.Entities(user));
+            _popupSystem.PopupEntity(Loc.GetString("popup-start-on-stick-on"), grenade, user);
         }
     }
 
     private void OnTimerUse(EntityUid uid, OnUseTimerTriggerComponent component, UseInHandEvent args)
     {
-        if (args.Handled) return;
+        if (args.Handled || HasComp<AutomatedTimerComponent>(uid) || component.UseVerbInstead)
+            return;
 
-        HandleTimerTrigger(
-            uid,
-            args.User,
-            component.Delay,
-            component.BeepInterval,
-            component.InitialBeepDelay,
-            component.BeepSound,
-            component.BeepParams);
+        if (component.DoPopup)
+            _popupSystem.PopupEntity(Loc.GetString("trigger-activated", ("device", uid)), args.User, args.User);
+
+        StartTimer((uid, component), args.User);
 
         args.Handled = true;
     }

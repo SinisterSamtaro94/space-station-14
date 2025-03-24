@@ -1,73 +1,79 @@
+using Content.Shared.Alert;
 using Content.Shared.Atmos;
 using Content.Shared.Damage;
 using Content.Shared.FixedPoint;
-using Robust.Shared.Physics;
+using Robust.Shared.Prototypes;
 
-namespace Content.Server.Temperature.Components
+namespace Content.Server.Temperature.Components;
+
+/// <summary>
+/// Handles changing temperature,
+/// informing others of the current temperature,
+/// and taking fire damage from high temperature.
+/// </summary>
+[RegisterComponent]
+public sealed partial class TemperatureComponent : Component
 {
     /// <summary>
-    /// Handles changing temperature,
-    /// informing others of the current temperature,
-    /// and taking fire damage from high temperature.
+    /// Surface temperature which is modified by the environment.
     /// </summary>
-    [RegisterComponent]
-    public sealed class TemperatureComponent : Component
-    {
-        [ViewVariables(VVAccess.ReadWrite)]
-        public float CurrentTemperature { get; set; } = Atmospherics.T20C;
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public float CurrentTemperature = Atmospherics.T20C;
 
-        [DataField("heatDamageThreshold")]
-        [ViewVariables(VVAccess.ReadWrite)]
-        public float HeatDamageThreshold = 360f;
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public float HeatDamageThreshold = 360f;
 
-        [DataField("coldDamageThreshold")]
-        [ViewVariables(VVAccess.ReadWrite)]
-        public float ColdDamageThreshold = 260f;
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public float ColdDamageThreshold = 260f;
 
-        [DataField("specificHeat")]
-        [ViewVariables(VVAccess.ReadWrite)]
-        public float SpecificHeat = 50f;
+    /// <summary>
+    /// Overrides HeatDamageThreshold if the entity's within a parent with the TemperatureDamageThresholdsComponent component.
+    /// </summary>
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public float? ParentHeatDamageThreshold;
 
-        /// <summary>
-        ///     How well does the air surrounding you merge into your body temperature?
-        /// </summary>
-        [DataField("atmosTemperatureTransferEfficiency")]
-        [ViewVariables(VVAccess.ReadWrite)]
-        public float AtmosTemperatureTransferEfficiency = 0.1f;
+    /// <summary>
+    /// Overrides ColdDamageThreshold if the entity's within a parent with the TemperatureDamageThresholdsComponent component.
+    /// </summary>
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public float? ParentColdDamageThreshold;
 
-        [ViewVariables] public float HeatCapacity
-        {
-            get
-            {
-                if (IoCManager.Resolve<IEntityManager>().TryGetComponent<IPhysBody?>(Owner, out var physics) && physics.FixturesMass != 0)
-                {
-                    return SpecificHeat * physics.FixturesMass;
-                }
+    /// <summary>
+    /// Heat capacity per kg of mass.
+    /// </summary>
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public float SpecificHeat = 50f;
 
-                return Atmospherics.MinimumHeatCapacity;
-            }
-        }
+    /// <summary>
+    /// How well does the air surrounding you merge into your body temperature?
+    /// </summary>
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public float AtmosTemperatureTransferEfficiency = 0.1f;
 
-        [DataField("coldDamage")]
-        [ViewVariables(VVAccess.ReadWrite)]
-        public DamageSpecifier ColdDamage = new();
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public DamageSpecifier ColdDamage = new();
 
-        [DataField("heatDamage")]
-        [ViewVariables(VVAccess.ReadWrite)]
-        public DamageSpecifier HeatDamage = new();
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public DamageSpecifier HeatDamage = new();
 
-        /// <summary>
-        ///     Temperature won't do more than this amount of damage per second.
-        ///
-        ///     Okay it genuinely reaches this basically immediately for a plasma fire.
-        /// </summary>
-        [DataField("damageCap")]
-        [ViewVariables(VVAccess.ReadWrite)]
-        public FixedPoint2 DamageCap = FixedPoint2.New(8);
+    /// <summary>
+    /// Temperature won't do more than this amount of damage per second.
+    /// </summary>
+    /// <remarks>
+    /// Okay it genuinely reaches this basically immediately for a plasma fire.
+    /// </remarks>
+    [DataField, ViewVariables(VVAccess.ReadWrite)]
+    public FixedPoint2 DamageCap = FixedPoint2.New(8);
 
-        /// <summary>
-        ///     Used to keep track of when damage starts/stops. Useful for logs.
-        /// </summary>
-        public bool TakingDamage = false;
-    }
+    /// <summary>
+    /// Used to keep track of when damage starts/stops. Useful for logs.
+    /// </summary>
+    [DataField]
+    public bool TakingDamage;
+
+    [DataField]
+    public ProtoId<AlertPrototype> HotAlert = "Hot";
+
+    [DataField]
+    public ProtoId<AlertPrototype> ColdAlert = "Cold";
 }

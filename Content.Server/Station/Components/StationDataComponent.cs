@@ -1,5 +1,6 @@
 ﻿using Content.Server.Shuttles.Systems;
 using Content.Server.Station.Systems;
+using Robust.Shared.Serialization.TypeSerializers.Implementations;
 using Robust.Shared.Utility;
 
 namespace Content.Server.Station.Components;
@@ -9,7 +10,7 @@ namespace Content.Server.Station.Components;
 /// All station entities will have this component.
 /// </summary>
 [RegisterComponent, Access(typeof(StationSystem))]
-public sealed class StationDataComponent : Component
+public sealed partial class StationDataComponent : Component
 {
     /// <summary>
     /// The game map prototype, if any, associated with this station.
@@ -20,21 +21,6 @@ public sealed class StationDataComponent : Component
     /// <summary>
     /// List of all grids this station is part of.
     /// </summary>
-    /// <remarks>
-    /// You should not mutate this yourself, go through StationSystem so the appropriate events get fired.
-    /// </remarks>
     [DataField("grids")]
-    public readonly HashSet<EntityUid> Grids = new();
-
-    /// <summary>
-    /// The emergency shuttle assigned to this station.
-    /// </summary>
-    [ViewVariables, Access(typeof(ShuttleSystem), Friend = AccessPermissions.ReadWrite)]
-    public EntityUid? EmergencyShuttle;
-
-    /// <summary>
-    /// Emergency shuttle map path for this station.
-    /// </summary>
-    [ViewVariables(VVAccess.ReadWrite), Access(typeof(ShuttleSystem), Other = AccessPermissions.ReadWriteExecute)]
-    public ResourcePath EmergencyShuttlePath = new("/Maps/Shuttles/emergency.yml");
+    public HashSet<EntityUid> Grids = new();
 }

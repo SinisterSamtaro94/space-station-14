@@ -3,7 +3,7 @@
   id: IDCardStandard
   name: identification card
   description: A card necessary to access various areas aboard the station.
-  noSpawn: true
+  abstract: true
   components:
   - type: Sprite
     sprite: Objects/Misc/id_cards.rsi
@@ -12,13 +12,19 @@
     - idcard
     sprite: Objects/Misc/id_cards.rsi
   - type: Item
+    size: Small
     heldPrefix: default
+    storedRotation: -90
   - type: Access
   - type: IdCard
   - type: StationRecordKeyStorage
   - type: Tag
     tags:
     - DoorBumpOpener
+    - WhitelistChameleon
+    - WhitelistChameleonIdCard
+  - type: StealTarget
+    stealGroup: IDCard
 
 #IDs with layers
 
@@ -60,6 +66,18 @@
 
 - type: entity
   parent: PassengerIDCard
+  id: ResearchAssistantIDCard
+  name: research assistant ID card
+  components:
+  - type: PresetIdCard
+    job: ResearchAssistant
+  - type: Sprite
+    layers:
+    - state: default
+    - state: idintern-sci
+
+- type: entity
+  parent: PassengerIDCard
   id: SecurityCadetIDCard
   name: security cadet ID card
   components:
@@ -83,7 +101,7 @@
     - state: idintern-service
 
 - type: entity
-  parent: IDCardStandard
+  parent: [IDCardStandard, BaseGrandTheftContraband]
   id: CaptainIDCard
   name: captain ID card
   components:
@@ -95,6 +113,14 @@
     heldPrefix: gold
   - type: PresetIdCard
     job: Captain
+  - type: Tag
+    tags:
+    - DoorBumpOpener
+    - WhitelistChameleon
+    - WhitelistChameleonIdCard
+    - HighRiskItem
+  - type: StealTarget
+    stealGroup: CaptainIDCard
 
 - type: entity
   parent: IDCardStandard
@@ -146,6 +172,18 @@
 
 - type: entity
   parent: IDCardStandard
+  id: ParamedicIDCard
+  name: paramedic ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: default
+    - state: idparamedic
+  - type: PresetIdCard
+    job: Paramedic
+
+- type: entity
+  parent: IDCardStandard
   id: ChemistIDCard
   name: chemist ID card
   components:
@@ -187,8 +225,10 @@
   components:
     - type: Sprite
       layers:
-        - state: default
+        - state: silver
         - state: idquartermaster
+    - type: Item
+      heldPrefix: silver
     - type: PresetIdCard
       job: Quartermaster
 
@@ -263,6 +303,22 @@
     - state: idbartender
   - type: PresetIdCard
     job: Bartender
+
+- type: entity
+  parent: IDCardStandard
+  id: PunPunIDCard
+  name: pun pun ID card
+  components:
+    - type: Sprite
+      layers:
+        - state: default
+        - state: idbartender
+    - type: PresetIdCard
+      job: Bartender
+      name: Pun Pun
+    - type: Tag #  Ignore Chameleon tags
+      tags:
+      - DoorBumpOpener
 
 - type: entity
   parent: IDCardStandard
@@ -384,48 +440,118 @@
 
 - type: entity
   parent: IDCardStandard
+  id: VisitorIDCard
+  name: visitor ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: default
+    - state: idvisitor
+  - type: IdCard
+    jobTitle: job-title-visitor
+    jobIcon: JobIconVisitor
+  - type: PresetIdCard
+    job: Visitor
+
+- type: entity
+  parent: IDCardStandard
+  id: BrigmedicIDCard
+  name: brigmedic ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: default
+    - state: idbrigmedic
+
+- type: entity
+  parent: IDCardStandard
   id: CentcomIDCard
   name: command officer ID card
   components:
   - type: Sprite
     layers:
-    - state: gold
+    - state: centcom
     - state: idcentcom
   - type: Item
-    heldPrefix: gold
-  - type: IdCard
-    jobTitle: Central Commander
-  - type: Access
-    groups:
-    - AllAccess
+    heldPrefix: blue
+  - type: PresetIdCard
+    job: CentralCommandOfficial
 
 - type: entity
-  parent: CentcomIDCard
+  parent: IDCardStandard
   id: ERTLeaderIDCard
-  name: ERT ID card
+  name: ERT leader ID card
   components:
   - type: Sprite
     layers:
     - state: gold
-    - state: ert_commander # we have the sprites but don't need individual ID entities for now.
+    - state: ert_commander
+  - type: PresetIdCard
+    job: ERTLeader
   - type: Item
     heldPrefix: gold
 
 - type: entity
   parent: IDCardStandard
-  id: CentcomIDCardSyndie
-  name: Centcom ID card
+  id: ERTChaplainIDCard
+  name: ERT chaplain ID card
   components:
   - type: Sprite
     layers:
-    - state: centcom
+    - state: gold
+    - state: ert_chaplain # we have the sprite for the id but dont have chaplain ERT equipment for now.
+  - type: PresetIdCard
+    job: ERTChaplain
   - type: Item
     heldPrefix: blue
-  - type: IdCard
-    jobTitle: Central Commander
-  - type: Access
-    tags:
-    - Maintenance
+
+- type: entity
+  parent: IDCardStandard
+  id: ERTEngineerIDCard
+  name: ERT engineer ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: gold
+    - state: ert_engineer
+  - type: PresetIdCard
+    job: ERTEngineer
+
+- type: entity
+  parent: IDCardStandard
+  id: ERTJanitorIDCard
+  name: ERT janitor ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: gold
+    - state: ert_janitor
+  - type: PresetIdCard
+    job: ERTJanitor
+
+- type: entity
+  parent: IDCardStandard
+  id: ERTMedicIDCard
+  name: ERT medic ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: gold
+    - state: ert_medic
+  - type: PresetIdCard
+    job: ERTMedical
+
+- type: entity
+  parent: IDCardStandard
+  id: ERTSecurityIDCard
+  name: ERT security ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: gold
+    - state: ert_security
+  - type: PresetIdCard
+    job: ERTSecurity
 
 - type: entity
   parent: IDCardStandard
@@ -440,30 +566,63 @@
       job: Musician
 
 - type: entity
-  parent: CentcomIDCard
+  parent: IDCardStandard
   id: CentcomIDCardDeathsquad
-  name: Deathsquad ID card
+  name: death squad ID card
   components:
   - type: Sprite
     layers:
     - state: centcom
   - type: Item
     heldPrefix: blue
-  - type: IdCard
-    jobTitle: Centcom Agent
+  - type: PresetIdCard
+    job: DeathSquad
 
 - type: entity
-  parent: PassengerIDCard
+  name: passenger ID card
+  parent: IDCardStandard
   id: AgentIDCard
   suffix: Agent
   components:
+  - type: PresetIdCard
+    job: Passenger
+  - type: Access
+    tags:
+    - Maintenance
+    - SyndicateAgent
+  - type: Sprite
+    layers:
+    - state: default
+    - state: idpassenger
   - type: AgentIDCard
   - type: ActivatableUI
     key: enum.AgentIDCardUiKey.Key
+    inHandsOnly: true
+  - type: Tag
+    tags:
+    - DoorBumpOpener
+  - type: ChameleonClothing
+    slot: [idcard]
+    default: PassengerIDCard
+    requireTag: WhitelistChameleonIdCard
   - type: UserInterface
     interfaces:
-      - key: enum.AgentIDCardUiKey.Key
+      enum.AgentIDCardUiKey.Key:
         type: AgentIDCardBoundUserInterface
+      enum.ChameleonUiKey.Key:
+        type: ChameleonBoundUserInterface
+
+- type: entity
+  name: passenger ID card
+  parent: AgentIDCard
+  id: NukieAgentIDCard
+  suffix: Nukie
+  components:
+  - type: Access
+    tags:
+    - Maintenance
+    - SyndicateAgent
+    - NuclearOperative
 
 - type: entity
   parent: IDCardStandard
@@ -480,7 +639,7 @@
 - type: entity
   parent: IDCardStandard
   id: SyndicateIDCard
-  name: Syndicate ID card
+  name: syndicate ID card
   components:
   - type: Sprite
     layers:
@@ -488,6 +647,20 @@
   - type: Access
     tags:
     - NuclearOperative
+    - SyndicateAgent
+
+- type: entity
+  parent: IDCardStandard
+  id: PirateIDCard
+  name: pirate ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: pirate
+  - type: Access
+    tags:
+    - NuclearOperative
+    - SyndicateAgent
 
 - type: entity
   parent: IDCardStandard
@@ -536,7 +709,7 @@
     - state: idzookeeper
   - type: PresetIdCard
     job: Zookeeper
-    
+
 - type: entity
   parent: IDCardStandard
   id: DetectiveIDCard
@@ -553,11 +726,121 @@
   parent: CentcomIDCard
   id: CBURNIDcard
   name: CBURN ID card
+  suffix: CBURN
   components:
   - type: Sprite
     layers:
-    - state: gold
-    - state: idcentcom
+    - state: centcom
   - type: Item
-    heldPrefix: gold
-    
+    heldPrefix: blue
+  - type: PresetIdCard
+    job: CBURN
+
+- type: entity
+  parent: IDCardStandard
+  id: CluwneIDCard
+  name: cluwne ID card
+  suffix: Unremoveable
+  components:
+  - type: Sprite
+    layers:
+    - state: default
+    - state: idcluwne
+  - type: IdCard
+    jobTitle: job-title-cluwne
+  - type: Unremoveable
+
+- type: entity
+  parent: EngineeringIDCard
+  id: SeniorEngineerIDCard
+  name: senior engineer ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: default
+    - state: idseniorengineer
+
+- type: entity
+  parent: ResearchIDCard
+  id: SeniorResearcherIDCard
+  name: senior researcher ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: default
+    - state: idseniorresearcher
+
+- type: entity
+  parent: MedicalIDCard
+  id: SeniorPhysicianIDCard
+  name: senior physician ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: default
+    - state: idseniorphysician
+
+- type: entity
+  parent: SecurityIDCard
+  id: SeniorOfficerIDCard
+  name: senior officer ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: default
+    - state: idseniorofficer
+
+- type: entity
+  parent: IDCardStandard
+  id: WizardIDCard
+  name: wizard ID card
+  components:
+  - type: Sprite
+    layers:
+    - state: wizard
+    - state: idwizard
+  - type: Access
+    tags:
+    - Wizard
+    - External
+    - Maintenance
+
+- type: entity
+  parent: IDCardStandard
+  id: UniversalIDCard
+  name: universal ID card
+  suffix: Admin
+  description: An ID card that gives you access beyond your wildest dreams.
+  components:
+  - type: Sprite
+    sprite: Objects/Misc/id_cards.rsi
+    layers:
+    - state: admin
+    - state: idadmin
+  - type: Clothing
+    sprite: Objects/Misc/id_cards.rsi
+  - type: Item
+    heldPrefix: green
+  - type: IdCard
+    jobTitle: job-title-universal
+    jobIcon: JobIconAdmin
+  - type: Access
+    groups:
+    - AllAccess
+    - Silicon
+    tags:
+    - CentralCommand
+    - NuclearOperative
+    - SyndicateAgent
+    - Wizard
+  - type: Tag #  Ignore Chameleon tags
+    tags:
+    - DoorBumpOpener
+  - type: AgentIDCard
+  - type: ActivatableUI
+    key: enum.AgentIDCardUiKey.Key
+    inHandsOnly: true
+  - type: UserInterface
+    interfaces:
+      enum.AgentIDCardUiKey.Key:
+        type: AgentIDCardBoundUserInterface

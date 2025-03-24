@@ -1,3 +1,5 @@
+using Content.Client.Clothing;
+using Content.Shared.Clothing.Components;
 using Content.Shared.Sprite;
 using Robust.Client.GameObjects;
 using Robust.Shared.GameStates;
@@ -8,6 +10,7 @@ namespace Content.Client.Sprite;
 public sealed class RandomSpriteSystem : SharedRandomSpriteSystem
 {
     [Dependency] private readonly IReflectionManager _reflection = default!;
+    [Dependency] private readonly ClientClothingSystem _clothing = default!;
 
     public override void Initialize()
     {
@@ -31,28 +34,48 @@ public sealed class RandomSpriteSystem : SharedRandomSpriteSystem
             component.Selected.Add(layer.Key, layer.Value);
         }
 
-        UpdateAppearance(uid, component);
+        UpdateSpriteComponentAppearance(uid, component);
+        UpdateClothingComponentAppearance(uid, component);
     }
 
-    private void UpdateAppearance(EntityUid uid, RandomSpriteComponent component, SpriteComponent? sprite = null)
+    private void UpdateClothingComponentAppearance(EntityUid uid, RandomSpriteComponent component, ClothingComponent? clothing = null)
+    {
+        if (!Resolve(uid, ref clothing, false))
+            return;
+
+        foreach (var slotPair in clothing.ClothingVisuals)
+        {
+            foreach (var keyColorPair in component.Selected)
+            {
+                _clothing.SetLayerColor(clothing, slotPair.Key, keyColorPair.Key, keyColorPair.Value.Color);
+                _clothing.SetLayerState(clothing, slotPair.Key, keyColorPair.Key, keyColorPair.Value.State);
+            }
+        }
+    }
+
+    private void UpdateSpriteComponentAppearance(EntityUid uid, RandomSpriteComponent component, SpriteComponent? sprite = null)
     {
         if (!Resolve(uid, ref sprite, false))
             return;
 
         foreach (var layer in component.Selected)
         {
-            object key;
+            int index;
             if (_reflection.TryParseEnumReference(layer.Key, out var @enum))
             {
-                key = @enum;
+                if (!sprite.LayerMapTryGet(@enum, out index, logError: true))
+                    continue;
             }
-            else
+            else if (!sprite.LayerMapTryGet(layer.Key, out index))
             {
-                key = layer.Key;
+                if (layer.Key is not { } strKey || !int.TryParse(strKey, out index))
+                {
+                    Log.Error($"Invalid key `{layer.Key}` for entity with random sprite {ToPrettyString(uid)}");
+                    continue;
+                }
             }
-
-            sprite.LayerSetState(key, layer.Value.State);
-            sprite.LayerSetColor(key, layer.Value.Color ?? Color.White);
+            sprite.LayerSetState(index, layer.Value.State);
+            sprite.LayerSetColor(index, layer.Value.Color ?? Color.White);
         }
     }
 }

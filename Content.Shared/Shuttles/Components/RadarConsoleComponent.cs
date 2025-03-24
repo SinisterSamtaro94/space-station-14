@@ -3,8 +3,9 @@ using Robust.Shared.GameStates;
 
 namespace Content.Shared.Shuttles.Components;
 
-[RegisterComponent, NetworkedComponent, Access(typeof(SharedRadarConsoleSystem))]
-public sealed class RadarConsoleComponent : Component
+[RegisterComponent, NetworkedComponent, AutoGenerateComponentState]
+[Access(typeof(SharedRadarConsoleSystem))]
+public sealed partial class RadarConsoleComponent : Component
 {
     [ViewVariables(VVAccess.ReadWrite)]
     public float RangeVV
@@ -13,9 +14,15 @@ public sealed class RadarConsoleComponent : Component
         set => IoCManager
             .Resolve<IEntitySystemManager>()
             .GetEntitySystem<SharedRadarConsoleSystem>()
-            .SetRange(this, value);
+            .SetRange(Owner, value, this);
     }
 
-    [ViewVariables, DataField("maxRange")]
+    [DataField, AutoNetworkedField]
     public float MaxRange = 256f;
+
+    /// <summary>
+    /// If true, the radar will be centered on the entity. If not - on the grid on which it is located.
+    /// </summary>
+    [DataField]
+    public bool FollowEntity = false;
 }

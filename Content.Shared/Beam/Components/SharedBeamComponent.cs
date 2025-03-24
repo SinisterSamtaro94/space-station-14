@@ -1,46 +1,40 @@
 ﻿using Robust.Shared.Audio;
-using Robust.Shared.Map;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.Beam.Components;
 /// <summary>
 /// Use this as a generic beam. Not for something like a laser gun, more for something continuous like lightning.
 /// </summary>
-public abstract class SharedBeamComponent : Component
+public abstract partial class SharedBeamComponent : Component
 {
     /// <summary>
     /// A unique list of targets that this beam collided with.
     /// Useful for code like Arcing in the Lightning Component.
     /// </summary>
-    [ViewVariables]
     [DataField("hitTargets")]
     public HashSet<EntityUid> HitTargets = new();
 
     /// <summary>
     /// The virtual entity representing a beam.
     /// </summary>
-    [ViewVariables]
     [DataField("virtualBeamController")]
     public EntityUid? VirtualBeamController;
 
     /// <summary>
     /// The first beam created, useful for keeping track of chains.
     /// </summary>
-    [ViewVariables]
     [DataField("originBeam")]
     public EntityUid OriginBeam;
 
     /// <summary>
     /// The entity that fired the beam originally
     /// </summary>
-    [ViewVariables]
     [DataField("beamShooter")]
     public EntityUid BeamShooter;
 
     /// <summary>
     /// A unique list of created beams that the controller keeps track of.
     /// </summary>
-    [ViewVariables]
     [DataField("createdBeams")]
     public HashSet<EntityUid> CreatedBeams = new();
 
@@ -103,13 +97,13 @@ public sealed class BeamFiredEvent : EntityEventArgs
 [Serializable, NetSerializable]
 public sealed class BeamVisualizerEvent : EntityEventArgs
 {
-    public readonly EntityUid Beam;
+    public readonly NetEntity Beam;
     public readonly float DistanceLength;
     public readonly Angle UserAngle;
     public readonly string? BodyState;
     public readonly string Shader = "unshaded";
 
-    public BeamVisualizerEvent(EntityUid beam, float distanceLength, Angle userAngle, string? bodyState = null, string shader = "unshaded")
+    public BeamVisualizerEvent(NetEntity beam, float distanceLength, Angle userAngle, string? bodyState = null, string shader = "unshaded")
     {
         Beam = beam;
         DistanceLength = distanceLength;

@@ -10,11 +10,7 @@ guardian-activator-empty-examine = [color=#ba1919]The injector is spent.[/color]
 guardian-activator-invalid-target = Only humans can be injected!
 guardian-no-soul = Your guardian has no soul.
 guardian-available = Your guardian now has a soul.
-
-# Guardian action
-
-action-name-guardian = Toggle Guardian
-action-description-guardian = Either manifests the guardian or recalls it back into your body
+guardian-inside-container = There's no room to release your guardian!
 
 ## Guardian entity specific
 

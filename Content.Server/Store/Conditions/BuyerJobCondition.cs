@@ -1,6 +1,6 @@
-using Content.Server.Mind.Components;
-using Content.Server.Roles;
+using Content.Shared.Mind;
 using Content.Shared.Roles;
+using Content.Shared.Roles.Jobs;
 using Content.Shared.Store;
 using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype.Set;
 
@@ -10,7 +10,7 @@ namespace Content.Server.Store.Conditions;
 /// Allows a store entry to be filtered out based on the user's job.
 /// Supports both blacklists and whitelists
 /// </summary>
-public sealed class BuyerJobCondition : ListingCondition
+public sealed partial class BuyerJobCondition : ListingCondition
 {
     /// <summary>
     /// A whitelist of jobs prototypes that can purchase this listing. Only one needs to be found.
@@ -28,33 +28,21 @@ public sealed class BuyerJobCondition : ListingCondition
     {
         var ent = args.EntityManager;
 
-        if (!ent.TryGetComponent<MindComponent>(args.Buyer, out var mind) || mind.Mind == null)
-            return true; //this is for things like surplus crate
+        if (!ent.TryGetComponent<MindComponent>(args.Buyer, out var _))
+            return true; // inanimate objects don't have minds
+
+        var jobs = ent.System<SharedJobSystem>();
+        jobs.MindTryGetJob(args.Buyer, out var job);
 
         if (Blacklist != null)
         {
-            foreach (var role in mind.Mind.AllRoles)
-            {
-                if (role is not Job job)
-                    continue;
-
-                if (Blacklist.Contains(job.Prototype.ID))
-                    return false;
-            }
+            if (job is not null && Blacklist.Contains(job.ID))
+                return false;
         }
 
         if (Whitelist != null)
         {
-            var found = false;
-            foreach (var role in mind.Mind.AllRoles)
-            {
-                if (role is not Job job)
-                    continue;
-
-                if (Whitelist.Contains(job.Prototype.ID))
-                    found = true;
-            }
-            if (!found)
+            if (job == null || !Whitelist.Contains(job.ID))
                 return false;
         }
 

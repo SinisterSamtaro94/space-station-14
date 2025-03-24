@@ -5,12 +5,9 @@
   name: foamdart box
   components:
   - type: BallisticAmmoProvider
-    whitelist:
-      tags:
-        - CartridgeRocket
+    mayTransfer: true
     capacity: 30
   - type: Sprite
-    netsync: false
   - type: ContainerContainer
     containers:
       ballistic-ammo: !type:Container
@@ -20,23 +17,37 @@
 - type: entity
   parent: BoxDonkSoftBase
   id: BoxDonkSoftBox
-  name: foam dart box
+  name: box of foam darts
   components:
   - type: BallisticAmmoProvider
+    whitelist:
+      tags:
+        - BulletFoam
     capacity: 40
     proto: BulletFoam
   - type: Sprite
-    sprite: Objects/Fun/toys.rsi
-    state: foambox
+    sprite: Objects/Storage/boxes.rsi
+    layers:
+      - state: boxwidetoy
+      - state: shelltoy
 
 - type: entity
-  parent: BoxDonkSoftBase
+  parent: BaseMagazineBoxMagnum
   id: BoxCartridgeCap
   name: cap gun cartridge box
   components:
   - type: BallisticAmmoProvider
-    capacity: 20
     proto: CartridgeCap
+    capacity: 20
+  - type: MagazineVisuals
+    magState: mag-cap
+    steps: 4
+    zeroVisible: false
   - type: Sprite
-    sprite: Objects/Storage/boxes.rsi
-    state: box
+    sprite: Objects/Weapons/Guns/Ammunition/Boxes/magnum.rsi
+    layers:
+      - state: base
+        map: ["enum.GunVisualLayers.Base"]
+      - state: mag-cap-1
+        map: ["enum.GunVisualLayers.Mag"]
+      - state: capbase

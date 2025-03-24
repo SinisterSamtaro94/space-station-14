@@ -1,3 +1,4 @@
+using System.Numerics;
 using Content.Shared.Interaction;
 using Content.Shared.Whitelist;
 using Robust.Client.GameObjects;
@@ -21,6 +22,8 @@ public sealed class TargetOutlineSystem : EntitySystem
     [Dependency] private readonly IPlayerManager _playerManager = default!;
     [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
     [Dependency] private readonly SharedInteractionSystem _interactionSystem = default!;
+    [Dependency] private readonly EntityWhitelistSystem _whitelistSystem = default!;
+    [Dependency] private readonly SharedTransformSystem _transformSystem = default!;
 
     private bool _enabled = false;
 
@@ -28,6 +31,11 @@ public sealed class TargetOutlineSystem : EntitySystem
     ///     Whitelist that the target must satisfy.
     /// </summary>
     public EntityWhitelist? Whitelist = null;
+
+    /// <summary>
+    ///     Blacklist that the target must satisfy.
+    /// </summary>
+    public EntityWhitelist? Blacklist = null;
 
     /// <summary>
     ///     Predicate the target must satisfy.
@@ -58,10 +66,16 @@ public sealed class TargetOutlineSystem : EntitySystem
     /// <summary>
     ///     The size of the box around the mouse to use when looking for valid targets.
     /// </summary>
-    public float LookupSize = 2;
+    public float LookupSize = 1;
 
+    private Vector2 LookupVector => new(LookupSize, LookupSize);
+
+    [ValidatePrototypeId<ShaderPrototype>]
     private const string ShaderTargetValid = "SelectionOutlineInrange";
+
+    [ValidatePrototypeId<ShaderPrototype>]
     private const string ShaderTargetInvalid = "SelectionOutline";
+
     private ShaderInstance? _shaderTargetValid;
     private ShaderInstance? _shaderTargetInvalid;
 
@@ -84,15 +98,16 @@ public sealed class TargetOutlineSystem : EntitySystem
         RemoveHighlights();
     }
 
-    public void Enable(float range, bool checkObstructions, Func<EntityUid, bool>? predicate, EntityWhitelist? whitelist, CancellableEntityEventArgs? validationEvent)
+    public void Enable(float range, bool checkObstructions, Func<EntityUid, bool>? predicate, EntityWhitelist? whitelist, EntityWhitelist? blacklist, CancellableEntityEventArgs? validationEvent)
     {
         Range = range;
         CheckObstruction = checkObstructions;
         Predicate = predicate;
         Whitelist = whitelist;
+        Blacklist = blacklist;
         ValidationEvent = validationEvent;
 
-        _enabled = Predicate != null || Whitelist != null || ValidationEvent != null;
+        _enabled = Predicate != null || Whitelist != null || Blacklist != null || ValidationEvent != null;
     }
 
     public override void Update(float frameTime)
@@ -107,7 +122,7 @@ public sealed class TargetOutlineSystem : EntitySystem
 
     private void HighlightTargets()
     {
-        if (_playerManager.LocalPlayer?.ControlledEntity is not { Valid: true } player)
+        if (_playerManager.LocalEntity is not { Valid: true } player)
             return;
 
         // remove current highlights
@@ -115,9 +130,9 @@ public sealed class TargetOutlineSystem : EntitySystem
 
         // find possible targets on screen
         // TODO: Duplicated in SpriteSystem and DragDropSystem. Should probably be cached somewhere for a frame?
-        var mousePos = _eyeManager.ScreenToMap(_inputManager.MouseScreenPosition).Position;
-        var bounds = new Box2(mousePos - LookupSize / 2f, mousePos + LookupSize / 2f);
-        var pvsEntities = _lookup.GetEntitiesIntersecting(_eyeManager.CurrentMap, bounds, LookupFlags.Approximate | LookupFlags.Anchored);
+        var mousePos = _eyeManager.PixelToMap(_inputManager.MouseScreenPosition).Position;
+        var bounds = new Box2(mousePos - LookupVector, mousePos + LookupVector);
+        var pvsEntities = _lookup.GetEntitiesIntersecting(_eyeManager.CurrentMap, bounds, LookupFlags.Approximate | LookupFlags.Static);
         var spriteQuery = GetEntityQuery<SpriteComponent>();
 
         foreach (var entity in pvsEntities)
@@ -130,7 +145,7 @@ public sealed class TargetOutlineSystem : EntitySystem
 
             // check the entity whitelist
             if (valid && Whitelist != null)
-                valid = Whitelist.IsValid(entity);
+                valid = _whitelistSystem.IsWhitelistPass(Whitelist, entity);
 
             // and check the cancellable event
             if (valid && ValidationEvent != null)
@@ -157,9 +172,9 @@ public sealed class TargetOutlineSystem : EntitySystem
                 valid = _interactionSystem.InRangeUnobstructed(player, entity, Range);
             else if (Range >= 0)
             {
-                var origin = Transform(player).WorldPosition;
-                var target = Transform(entity).WorldPosition;
-                valid = (origin - target).LengthSquared <= Range;
+                var origin = _transformSystem.GetWorldPosition(player);
+                var target = _transformSystem.GetWorldPosition(entity);
+                valid = (origin - target).LengthSquared() <= Range;
             }
 
             if (sprite.PostShader != null &&

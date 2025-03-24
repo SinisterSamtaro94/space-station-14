@@ -1,17 +1,16 @@
-﻿using Content.Shared.Body.Systems;
+using Content.Shared.Body.Systems;
+using Robust.Shared.Containers;
 using Robust.Shared.GameStates;
 
 namespace Content.Shared.Body.Organ;
 
-[RegisterComponent, NetworkedComponent]
+[RegisterComponent, NetworkedComponent, AutoGenerateComponentState]
 [Access(typeof(SharedBodySystem))]
-public sealed class OrganComponent : Component
+public sealed partial class OrganComponent : Component
 {
-    [ViewVariables]
-    [DataField("body")]
+    /// <summary>
+    /// Relevant body this organ is attached to.
+    /// </summary>
+    [DataField, AutoNetworkedField]
     public EntityUid? Body;
-
-    [ViewVariables]
-    [DataField("parent")]
-    public OrganSlot? ParentSlot;
 }

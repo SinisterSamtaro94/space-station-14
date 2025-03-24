@@ -1,7 +1,8 @@
-using Content.Server.Humanoid;
+using Content.Shared.Humanoid;
 using Content.Shared.Store;
 using Content.Shared.Humanoid.Prototypes;
 using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype.Set;
+using Content.Shared.Mind;
 
 namespace Content.Server.Store.Conditions;
 
@@ -9,7 +10,7 @@ namespace Content.Server.Store.Conditions;
 /// Allows a store entry to be filtered out based on the user's species.
 /// Supports both blacklists and whitelists.
 /// </summary>
-public sealed class BuyerSpeciesCondition : ListingCondition
+public sealed partial class BuyerSpeciesCondition : ListingCondition
 {
     /// <summary>
     /// A whitelist of species that can purchase this listing.
@@ -27,7 +28,10 @@ public sealed class BuyerSpeciesCondition : ListingCondition
     {
         var ent = args.EntityManager;
 
-        if (!ent.TryGetComponent<HumanoidComponent>(args.Buyer, out var appearance))
+        if (!ent.TryGetComponent<MindComponent>(args.Buyer, out var mind))
+            return true; // needed to obtain body entityuid to check for humanoid appearance
+
+        if (!ent.TryGetComponent<HumanoidAppearanceComponent>(mind.OwnedEntity, out var appearance))
             return true; // inanimate or non-humanoid entities should be handled elsewhere, main example being surplus crates
 
         if (Blacklist != null)

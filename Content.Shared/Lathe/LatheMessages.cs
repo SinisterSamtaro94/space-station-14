@@ -1,4 +1,5 @@
 using Content.Shared.Research.Prototypes;
+using Robust.Shared.Prototypes;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.Lathe;
@@ -6,13 +7,13 @@ namespace Content.Shared.Lathe;
 [Serializable, NetSerializable]
 public sealed class LatheUpdateState : BoundUserInterfaceState
 {
-    public List<string> Recipes;
+    public List<ProtoId<LatheRecipePrototype>> Recipes;
 
     public List<LatheRecipePrototype> Queue;
 
     public LatheRecipePrototype? CurrentlyProducing;
 
-    public LatheUpdateState(List<string> recipes, List<LatheRecipePrototype> queue, LatheRecipePrototype? currentlyProducing = null)
+    public LatheUpdateState(List<ProtoId<LatheRecipePrototype>> recipes, List<LatheRecipePrototype> queue, LatheRecipePrototype? currentlyProducing = null)
     {
         Recipes = recipes;
         Queue = queue;
@@ -24,19 +25,10 @@ public sealed class LatheUpdateState : BoundUserInterfaceState
 ///     Sent to the server to sync material storage and the recipe queue.
 /// </summary>
 [Serializable, NetSerializable]
-public sealed class LatheSyncRequestMessage : BoundUserInterfaceMessage { }
+public sealed class LatheSyncRequestMessage : BoundUserInterfaceMessage
+{
 
-/// <summary>
-///     Sent to the server to sync the lathe's technology database with the research server.
-/// </summary>
-[Serializable, NetSerializable]
-public sealed class LatheServerSyncMessage : BoundUserInterfaceMessage { }
-
-/// <summary>
-///     Sent to the server to open the ResearchClient UI.
-/// </summary>
-[Serializable, NetSerializable]
-public sealed class LatheServerSelectionMessage : BoundUserInterfaceMessage { }
+}
 
 /// <summary>
 ///     Sent to the server when a client queues a new recipe.

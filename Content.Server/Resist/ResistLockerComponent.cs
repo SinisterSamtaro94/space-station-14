@@ -4,12 +4,11 @@ namespace Content.Server.Resist;
 
 [RegisterComponent]
 [Access(typeof(ResistLockerSystem))]
-public sealed class ResistLockerComponent : Component
+public sealed partial class ResistLockerComponent : Component
 {
     /// <summary>
     /// How long will this locker take to kick open, defaults to 2 minutes
     /// </summary>
-    [ViewVariables]
     [DataField("resistTime")]
     public float ResistTime = 120f;
 
@@ -18,9 +17,4 @@ public sealed class ResistLockerComponent : Component
     /// </summary>
     [ViewVariables]
     public bool IsResisting = false;
-
-    /// <summary>
-    /// Cancellation token used to cancel the DoAfter if the container is opened before it's complete
-    /// </summary>
-    public CancellationTokenSource? CancelToken;
 }

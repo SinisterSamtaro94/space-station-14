@@ -1,4 +1,4 @@
-using Content.Shared.Chemistry.Components;
+using Content.Shared.Chemistry.Reagent;
 using Content.Shared.FixedPoint;
 using Robust.Shared.Serialization;
 
@@ -43,11 +43,11 @@ namespace Content.Shared.Chemistry
     [Serializable, NetSerializable]
     public sealed class ChemMasterReagentAmountButtonMessage : BoundUserInterfaceMessage
     {
-        public readonly string ReagentId;
+        public readonly ReagentId ReagentId;
         public readonly ChemMasterReagentAmount Amount;
         public readonly bool FromBuffer;
 
-        public ChemMasterReagentAmountButtonMessage(string reagentId, ChemMasterReagentAmount amount, bool fromBuffer)
+        public ChemMasterReagentAmountButtonMessage(ReagentId reagentId, ChemMasterReagentAmount amount, bool fromBuffer)
         {
             ReagentId = reagentId;
             Amount = amount;
@@ -89,12 +89,26 @@ namespace Content.Shared.Chemistry
         Discard,
     }
 
+    public enum ChemMasterSortingType : byte
+    {
+        None = 0,
+        Alphabetical = 1,
+        Quantity = 2,
+        Latest = 3,
+    }
+
+    [Serializable, NetSerializable]
+    public sealed class ChemMasterSortingTypeCycleMessage : BoundUserInterfaceMessage;
+
+
     public enum ChemMasterReagentAmount
     {
         U1 = 1,
         U5 = 5,
         U10 = 10,
         U25 = 25,
+        U50 = 50,
+        U100 = 100,
         All,
     }
 
@@ -119,34 +133,29 @@ namespace Content.Shared.Chemistry
         /// The container name to show to the player
         /// </summary>
         public readonly string DisplayName;
-        /// <summary>
-        /// Whether the container holds reagents or entities
-        /// </summary>
-        public readonly bool HoldsReagents;
+
         /// <summary>
         /// The currently used volume of the container
         /// </summary>
         public readonly FixedPoint2 CurrentVolume;
+
         /// <summary>
         /// The maximum volume of the container
         /// </summary>
         public readonly FixedPoint2 MaxVolume;
-        /// <summary>
-        /// A list of the reagents/entities and their sizes within the container
-        /// </summary>
-        // todo: this causes NetSerializer exceptions if it's an IReadOnlyList (which would be preferred)
-        public readonly List<(string Id, FixedPoint2 Quantity)> Contents;
 
-        public ContainerInfo(
-            string displayName, bool holdsReagents,
-            FixedPoint2 currentVolume, FixedPoint2 maxVolume,
-            List<(string, FixedPoint2)> contents)
+        /// <summary>
+        /// A list of the entities and their sizes within the container
+        /// </summary>
+        public List<(string Id, FixedPoint2 Quantity)>? Entities { get; init; }
+
+        public List<ReagentQuantity>? Reagents { get; init; }
+
+        public ContainerInfo(string displayName, FixedPoint2 currentVolume, FixedPoint2 maxVolume)
         {
             DisplayName = displayName;
-            HoldsReagents = holdsReagents;
             CurrentVolume = currentVolume;
             MaxVolume = maxVolume;
-            Contents = contents;
         }
     }
 
@@ -159,9 +168,11 @@ namespace Content.Shared.Chemistry
         /// <summary>
         /// A list of the reagents and their amounts within the buffer, if applicable.
         /// </summary>
-        public readonly IReadOnlyList<Solution.ReagentQuantity> BufferReagents;
+        public readonly IReadOnlyList<ReagentQuantity> BufferReagents;
 
         public readonly ChemMasterMode Mode;
+
+        public readonly ChemMasterSortingType SortingType;
 
         public readonly FixedPoint2? BufferCurrentVolume;
         public readonly uint SelectedPillType;
@@ -171,14 +182,15 @@ namespace Content.Shared.Chemistry
         public readonly bool UpdateLabel;
 
         public ChemMasterBoundUserInterfaceState(
-            ChemMasterMode mode, ContainerInfo? inputContainerInfo, ContainerInfo? outputContainerInfo,
-            IReadOnlyList<Solution.ReagentQuantity> bufferReagents, FixedPoint2 bufferCurrentVolume,
+            ChemMasterMode mode, ChemMasterSortingType sortingType, ContainerInfo? inputContainerInfo, ContainerInfo? outputContainerInfo,
+            IReadOnlyList<ReagentQuantity> bufferReagents, FixedPoint2 bufferCurrentVolume,
             uint selectedPillType, uint pillDosageLimit, bool updateLabel)
         {
             InputContainerInfo = inputContainerInfo;
             OutputContainerInfo = outputContainerInfo;
             BufferReagents = bufferReagents;
             Mode = mode;
+            SortingType = sortingType;
             BufferCurrentVolume = bufferCurrentVolume;
             SelectedPillType = selectedPillType;
             PillDosageLimit = pillDosageLimit;

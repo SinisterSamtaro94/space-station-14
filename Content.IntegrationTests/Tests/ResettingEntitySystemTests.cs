@@ -1,9 +1,6 @@
-﻿using System.Threading.Tasks;
-using Content.Server.GameTicking;
+﻿using Content.Server.GameTicking;
 using Content.Shared.GameTicking;
-using NUnit.Framework;
 using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
 using Robust.Shared.Reflection;
 
 namespace Content.IntegrationTests.Tests
@@ -12,7 +9,6 @@ namespace Content.IntegrationTests.Tests
     [TestOf(typeof(RoundRestartCleanupEvent))]
     public sealed class ResettingEntitySystemTests
     {
-        [Reflect(false)]
         public sealed class TestRoundRestartCleanupEvent : EntitySystem
         {
             public bool HasBeenReset { get; set; }
@@ -33,8 +29,13 @@ namespace Content.IntegrationTests.Tests
         [Test]
         public async Task ResettingEntitySystemResetTest()
         {
-            await using var pairTracker = await PoolManager.GetServerClient(new PoolSettings{NoClient = true});
-            var server = pairTracker.Pair.Server;
+            await using var pair = await PoolManager.GetServerClient(new PoolSettings
+            {
+                DummyTicker = false,
+                Connected = true,
+                Dirty = true
+            });
+            var server = pair.Server;
 
             var entitySystemManager = server.ResolveDependency<IEntitySystemManager>();
             var gameTicker = entitySystemManager.GetEntitySystem<GameTicker>();
@@ -47,13 +48,11 @@ namespace Content.IntegrationTests.Tests
 
                 system.HasBeenReset = false;
 
-                Assert.False(system.HasBeenReset);
-
                 gameTicker.RestartRound();
 
-                Assert.True(system.HasBeenReset);
+                Assert.That(system.HasBeenReset);
             });
-            await pairTracker.CleanReturnAsync();
+            await pair.CleanReturnAsync();
         }
     }
 }

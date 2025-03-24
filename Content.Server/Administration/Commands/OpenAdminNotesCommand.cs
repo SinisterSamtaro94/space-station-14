@@ -1,7 +1,5 @@
 ﻿using Content.Server.Administration.Notes;
-using Content.Server.Database;
 using Content.Shared.Administration;
-using Robust.Server.Player;
 using Robust.Shared.Console;
 
 namespace Content.Server.Administration.Commands;
@@ -17,9 +15,9 @@ public sealed class OpenAdminNotesCommand : IConsoleCommand
 
     public async void Execute(IConsoleShell shell, string argStr, string[] args)
     {
-        if (shell.Player is not IPlayerSession player)
+        if (shell.Player is not { } player)
         {
-            shell.WriteError("This does not work from the server console.");
+            shell.WriteError(Loc.GetString("shell-cannot-run-command-from-server"));
             return;
         }
 

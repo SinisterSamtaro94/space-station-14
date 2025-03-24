@@ -1,116 +1,94 @@
-using Content.Server.DoAfter;
-using Content.Server.Contests;
-using Robust.Shared.Containers;
 using Content.Server.Popups;
-using Robust.Shared.Player;
-using Content.Shared.Storage;
-using Content.Shared.Inventory;
-using Content.Shared.Hands.EntitySystems;
+using Content.Shared.Storage.Components;
 using Content.Shared.ActionBlocker;
-using Content.Shared.Movement.Events;
+using Content.Shared.DoAfter;
+using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Interaction.Events;
+using Content.Shared.Inventory;
+using Content.Shared.Movement.Events;
+using Content.Shared.Resist;
+using Content.Shared.Storage;
+using Robust.Shared.Containers;
 
 namespace Content.Server.Resist;
 
 public sealed class EscapeInventorySystem : EntitySystem
 {
-    [Dependency] private readonly DoAfterSystem _doAfterSystem = default!;
+    [Dependency] private readonly SharedDoAfterSystem _doAfterSystem = default!;
     [Dependency] private readonly PopupSystem _popupSystem = default!;
     [Dependency] private readonly SharedContainerSystem _containerSystem = default!;
     [Dependency] private readonly ActionBlockerSystem _actionBlockerSystem = default!;
     [Dependency] private readonly SharedHandsSystem _handsSystem = default!;
-    [Dependency] private readonly ContestsSystem _contests = default!;
-
-    /// <summary>
-    /// You can't escape the hands of an entity this many times more massive than you.
-    /// </summary>
-    public const float MaximumMassDisadvantage = 6f;
 
     public override void Initialize()
     {
         base.Initialize();
 
         SubscribeLocalEvent<CanEscapeInventoryComponent, MoveInputEvent>(OnRelayMovement);
-        SubscribeLocalEvent<CanEscapeInventoryComponent, UpdateCanMoveEvent>(OnMoveAttempt);
-        SubscribeLocalEvent<CanEscapeInventoryComponent, EscapeDoAfterComplete>(OnEscapeComplete);
-        SubscribeLocalEvent<CanEscapeInventoryComponent, EscapeDoAfterCancel>(OnEscapeFail);
+        SubscribeLocalEvent<CanEscapeInventoryComponent, EscapeInventoryEvent>(OnEscape);
         SubscribeLocalEvent<CanEscapeInventoryComponent, DroppedEvent>(OnDropped);
     }
 
     private void OnRelayMovement(EntityUid uid, CanEscapeInventoryComponent component, ref MoveInputEvent args)
     {
-        if (component.CancelToken != null)
+        if (!args.HasDirectionalMovement)
             return;
 
-        if (!_containerSystem.TryGetContainingContainer(uid, out var container) || !_actionBlockerSystem.CanInteract(uid, container.Owner))
+        if (!_containerSystem.TryGetContainingContainer((uid, null, null), out var container) || !_actionBlockerSystem.CanInteract(uid, container.Owner))
             return;
+
+        // Make sure there's nothing stopped the removal (like being glued)
+        if (!_containerSystem.CanRemove(uid, container))
+        {
+            _popupSystem.PopupEntity(Loc.GetString("escape-inventory-component-failed-resisting"), uid, uid);
+            return;
+        }
 
         // Contested
-        if (_handsSystem.IsHolding(container.Owner, uid, out var inHand))
+        if (_handsSystem.IsHolding(container.Owner, uid, out _))
         {
-            var contestResults = _contests.MassContest(uid, container.Owner);
-
-            // Inverse if we aren't going to divide by 0, otherwise just use a default multiplier of 1.
-            if (contestResults != 0)
-                contestResults = 1 / contestResults;
-            else
-                contestResults = 1;
-
-            if (contestResults >= MaximumMassDisadvantage)
-                return;
-
-            AttemptEscape(uid, container.Owner, component, contestResults);
+            AttemptEscape(uid, container.Owner, component);
             return;
         }
 
         // Uncontested
-        if (HasComp<SharedStorageComponent>(container.Owner) || HasComp<InventoryComponent>(container.Owner))
+        if (HasComp<StorageComponent>(container.Owner) || HasComp<InventoryComponent>(container.Owner) || HasComp<SecretStashComponent>(container.Owner))
             AttemptEscape(uid, container.Owner, component);
-    }
-
-    private void OnMoveAttempt(EntityUid uid, CanEscapeInventoryComponent component, UpdateCanMoveEvent args)
-    {
-        if (_containerSystem.IsEntityOrParentInContainer(uid))
-            args.Cancel();
     }
 
     private void AttemptEscape(EntityUid user, EntityUid container, CanEscapeInventoryComponent component, float multiplier = 1f)
     {
-        component.CancelToken = new();
-        var doAfterEventArgs = new DoAfterEventArgs(user, component.BaseResistTime * multiplier, component.CancelToken.Token, container)
+        if (component.IsEscaping)
+            return;
+
+        var doAfterEventArgs = new DoAfterArgs(EntityManager, user, component.BaseResistTime * multiplier, new EscapeInventoryEvent(), user, target: container)
         {
-            BreakOnTargetMove = false,
-            BreakOnUserMove = false,
+            BreakOnMove = true,
             BreakOnDamage = true,
-            BreakOnStun = true,
-            NeedHand = false,
-            UserFinishedEvent = new EscapeDoAfterComplete(),
-            UserCancelledEvent = new EscapeDoAfterCancel(),
+            NeedHand = false
         };
 
-        _popupSystem.PopupEntity(Loc.GetString("escape-inventory-component-start-resisting"), user, Filter.Entities(user));
-        _popupSystem.PopupEntity(Loc.GetString("escape-inventory-component-start-resisting-target"), container, Filter.Entities(container));
-        _doAfterSystem.DoAfter(doAfterEventArgs);
+        if (!_doAfterSystem.TryStartDoAfter(doAfterEventArgs, out component.DoAfter))
+            return;
+
+        _popupSystem.PopupEntity(Loc.GetString("escape-inventory-component-start-resisting"), user, user);
+        _popupSystem.PopupEntity(Loc.GetString("escape-inventory-component-start-resisting-target"), container, container);
     }
 
-    private void OnEscapeComplete(EntityUid uid, CanEscapeInventoryComponent component, EscapeDoAfterComplete ev)
+    private void OnEscape(EntityUid uid, CanEscapeInventoryComponent component, EscapeInventoryEvent args)
     {
-        //Drops the mob on the tile below the container
-        Transform(uid).AttachParentToContainerOrGrid(EntityManager);
-        component.CancelToken = null;
-    }
+        component.DoAfter = null;
 
-    private void OnEscapeFail(EntityUid uid, CanEscapeInventoryComponent component, EscapeDoAfterCancel ev)
-    {
-        component.CancelToken = null;
+        if (args.Handled || args.Cancelled)
+            return;
+
+        _containerSystem.AttachParentToContainerOrGrid((uid, Transform(uid)));
+        args.Handled = true;
     }
 
     private void OnDropped(EntityUid uid, CanEscapeInventoryComponent component, DroppedEvent args)
     {
-        component.CancelToken?.Cancel();
+        if (component.DoAfter != null)
+            _doAfterSystem.Cancel(component.DoAfter);
     }
-
-    private sealed class EscapeDoAfterComplete : EntityEventArgs { }
-
-    private sealed class EscapeDoAfterCancel : EntityEventArgs { }
 }

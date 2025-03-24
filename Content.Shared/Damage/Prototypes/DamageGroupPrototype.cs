@@ -11,13 +11,19 @@ namespace Content.Shared.Damage.Prototypes
     ///     These groups can be used to specify supported damage types of a <see cref="DamageContainerPrototype"/>, or
     ///     to change/get/set damage in a <see cref="DamageableComponent"/>.
     /// </remarks>
-    [Prototype("damageGroup")]
+    [Prototype(2)]
     [Serializable, NetSerializable]
-    public sealed class DamageGroupPrototype : IPrototype
+    public sealed partial class DamageGroupPrototype : IPrototype
     {
-        [IdDataFieldAttribute] public string ID { get; } = default!;
+        [IdDataField] public string ID { get; private set; } = default!;
+
+        [DataField(required: true)]
+        private LocId Name { get; set; }
+
+        [ViewVariables(VVAccess.ReadOnly)]
+        public string LocalizedName => Loc.GetString(Name);
 
         [DataField("damageTypes", required: true, customTypeSerializer: typeof(PrototypeIdListSerializer<DamageTypePrototype>))]
-        public List<string> DamageTypes { get; } = default!;
+        public List<string> DamageTypes { get; private set; } = default!;
     }
 }

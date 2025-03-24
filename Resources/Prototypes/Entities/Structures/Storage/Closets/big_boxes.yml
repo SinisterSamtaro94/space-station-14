@@ -1,7 +1,8 @@
 ﻿- type: entity
   id: BaseBigBox
-  name: cardboard box
+  name: cardboard box #it's still just a box
   description: Huh? Just a box...
+  abstract: true
   components:
     - type: Transform
       noRot: true
@@ -10,7 +11,8 @@
       bodyType: KinematicController
     - type: Fixtures
       fixtures:
-        - shape:
+        fix1:
+          shape:
             !type:PhysShapeAabb
             bounds: "-0.4,-0.4,0.4,0.4"
           density: 100
@@ -26,8 +28,8 @@
     - type: EntityStorage
       isCollidableWhenOpen: false
       openOnMove: false
-      airtight: true #true for now until it doesn't make a vacuum
-      capacity: 4 #4 Entities seems like a nice comfy fit for a cardboard box.
+      airtight: false
+      capacity: 5 #5 entity capacity to fit all of your friends (or teammates on your nuclear operation without reinforcements).
     - type: ContainerContainer
       containers:
         entity_storage: !type:Container
@@ -35,62 +37,68 @@
       damageContainer: Box
     - type: Sprite
       noRot: true
-      netsync: false
       sprite: Structures/Storage/closet.rsi
       layers:
       - state: cardboard
+        map: ["enum.StorageVisualLayers.Base"]
       - state: cardboard_open
         map: ["enum.StorageVisualLayers.Door"]
     - type: Appearance
-      visuals:
-      - type: StorageVisualizer
-        state: cardboard
-        state_open: cardboard_open
+    - type: EntityStorageVisuals
+      stateBaseClosed: cardboard
+      stateDoorOpen: cardboard_open
     - type: Tag
       tags:
         - DoorBumpOpener
+    - type: Construction
+      graph: BaseBigBox
+      node: basebigbox
+      containers:
+        - entity_storage
 
 - type: entity
   id: StealthBox
   suffix: stealth
   parent: BaseBigBox
-  name: cardboard box #it's still just a box
   description: Kept ya waiting, huh?
   components:
-    - type: CardboardBox
-      effectSound: /Audio/Effects/chime.ogg
     - type: Damageable
-      damageContainer: Box
       damageModifierSet: FlimsyMetallic #Syndicate boxes should have a bit of protection
-    - type: Sprite
-      noRot: true
-      netsync: false
-      sprite: Structures/Storage/closet.rsi
-      layers:
-        - state: agentbox
-        - state: cardboard_open
-          map: ["enum.StorageVisualLayers.Door"]
-    - type: Appearance
-      visuals:
-        - type: StorageVisualizer
-          state: agentbox
-          state_open: cardboard_open
+    - type: CardboardBox
+      quiet: true
     - type: Stealth
+      hadOutline: true
     - type: StealthOnMove
       passiveVisibilityRate: -0.37
       movementVisibilityRate: 0.20
+
+- type: entity
+  id: BigBox
+  parent: BaseBigBox
+  components:
+  - type: InteractionOutline
+  - type: Destructible
+    thresholds:
+    - trigger:
+        !type:DamageTrigger
+        damage: 15
+      behaviors:
+      - !type:DoActsBehavior
+        acts: [ "Destruction" ]
+
 
 #For admin spawning only
 - type: entity
   id: GhostBox
   parent: StealthBox
-  suffix:
+  suffix: ""
   name: ghost box
   description: Beware!
   components:
     - type: Fixtures
       fixtures:
-        - shape:
+        fix1:
+          shape:
             !type:PhysShapeAabb
             bounds: "-0.4,-0.4,0.4,0.4"
           mask:
@@ -101,26 +109,4 @@
     - type: EntityStorage
       isCollidableWhenOpen: false
       openOnMove: false
-      airtight: true #whoever's inside should probably breath
-
-#Exclamation effect for box opening
-- type: entity
-  id: Exclamation
-  name: exclamation
-  noSpawn: true
-  save: false
-  components:
-    - type: Transform
-      noRot: true
-    - type: Sprite
-      sprite: Structures/Storage/closet.rsi
-      drawdepth: Effects
-      noRot: true
-      netsync: false
-      layers:
-        - state: "cardboard_special"
-    - type: TimedDespawn
-      lifetime: 1
-    - type: Tag
-      tags:
-        - HideContextMenu
+      airtight: false

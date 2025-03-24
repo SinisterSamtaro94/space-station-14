@@ -1,12 +1,13 @@
 using Robust.Shared.GameStates;
+using Robust.Shared.Prototypes;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.Dragon;
 
-[NetworkedComponent]
-public abstract class SharedDragonRiftComponent : Component
+[NetworkedComponent, EntityCategory("Spawner")]
+public abstract partial class SharedDragonRiftComponent : Component
 {
-    [ViewVariables, DataField("state")]
+    [DataField("state")]
     public DragonRiftState State = DragonRiftState.Charging;
 }
 

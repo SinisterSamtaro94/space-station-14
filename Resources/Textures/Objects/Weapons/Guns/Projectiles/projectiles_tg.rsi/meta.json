@@ -1,7 +1,7 @@
 {
   "version": 1,
   "license": "CC-BY-SA-3.0",
-  "copyright": "https://github.com/tgstation/tgstation/tree/88d7dbfc105fbf40284d7b7c4587f8d23c0ac3ac",
+  "copyright": "Taken from tgstation at https://github.com/tgstation/tgstation/tree/88d7dbfc105fbf40284d7b7c4587f8d23c0ac3ac, modified by chromiumboy.",
   "size": {
     "x": 32,
     "y": 32
@@ -9,6 +9,12 @@
   "states": [
     {
       "name": "omnilaser"
+    },
+    {
+      "name": "omnilaser_flash"
+    },
+    {
+      "name": "omnilaser_greyscale"
     },
     {
       "name": "impact_bullet",
@@ -32,6 +38,23 @@
           0.05
         ]
       ]
+    },
+    {
+      "name": "impact_laser_greyscale",
+      "delays": [
+        [
+          0.05,
+          0.05,
+          0.05,
+          0.05
+        ]
+      ]
+    },
+    {
+      "name": "heavylaser"
+    },
+    {
+      "name": "heavylaser_flash"
     }
   ]
 }

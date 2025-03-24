@@ -1,4 +1,4 @@
-﻿using Content.Shared.Physics;
+using Content.Shared.Physics;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype;
 
@@ -6,7 +6,7 @@ namespace Content.Shared.Lightning.Components;
 /// <summary>
 /// Handles how lightning acts and is spawned. Use the ShootLightning method to fire lightning from one user to a target.
 /// </summary>
-public abstract class SharedLightningComponent : Component
+public abstract partial class SharedLightningComponent : Component
 {
     /// <summary>
     /// Can this lightning arc?
@@ -33,9 +33,8 @@ public abstract class SharedLightningComponent : Component
     /// <summary>
     /// The target that the lightning will Arc to.
     /// </summary>
-    [ViewVariables]
     [DataField("arcTarget")]
-    public EntityUid ArcTarget;
+    public EntityUid? ArcTarget;
 
     /// <summary>
     /// How far should this lightning go?
@@ -47,14 +46,12 @@ public abstract class SharedLightningComponent : Component
     /// <summary>
     /// List of targets that this collided with already
     /// </summary>
-    [ViewVariables]
     [DataField("arcTargets")]
     public HashSet<EntityUid> ArcTargets = new();
 
     /// <summary>
     /// What should this arc to?
     /// </summary>
-    [ViewVariables]
     [DataField("collisionMask")]
     public int CollisionMask = (int) (CollisionGroup.MobMask | CollisionGroup.MachineMask);
 }

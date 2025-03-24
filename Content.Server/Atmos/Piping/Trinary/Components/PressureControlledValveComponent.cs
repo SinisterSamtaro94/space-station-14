@@ -1,9 +1,10 @@
 using Content.Shared.Atmos;
+using Content.Shared.Guidebook;
 
 namespace Content.Server.Atmos.Piping.Trinary.Components
 {
     [RegisterComponent]
-    public sealed class PressureControlledValveComponent : Component
+    public sealed partial class PressureControlledValveComponent : Component
     {
         [ViewVariables(VVAccess.ReadWrite)]
         [DataField("inlet")]
@@ -27,6 +28,7 @@ namespace Content.Server.Atmos.Piping.Trinary.Components
 
         [ViewVariables(VVAccess.ReadWrite)]
         [DataField("threshold")]
+        [GuidebookData]
         public float Threshold { get; set; } = Atmospherics.OneAtmosphere;
 
         [DataField("maxTransferRate")]

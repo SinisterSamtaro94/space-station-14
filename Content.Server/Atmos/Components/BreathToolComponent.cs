@@ -7,14 +7,15 @@ namespace Content.Server.Atmos.Components
     /// </summary>
     [RegisterComponent]
     [ComponentProtoName("BreathMask")]
-    public sealed class BreathToolComponent : Component
+    public sealed partial class BreathToolComponent : Component
     {
         /// <summary>
         /// Tool is functional only in allowed slots
         /// </summary>
-        [DataField("allowedSlots")]
-        public SlotFlags AllowedSlots = SlotFlags.MASK;
+        [DataField]
+        public SlotFlags AllowedSlots = SlotFlags.MASK | SlotFlags.HEAD;
         public bool IsFunctional;
+
         public EntityUid? ConnectedInternalsEntity;
     }
 }

@@ -1,5 +1,8 @@
+using System.Numerics;
+using Content.Shared.Movement.Components;
+using Content.Shared.Movement.Systems;
 using JetBrains.Annotations;
-using Robust.Shared.Player;
+using Robust.Shared.Network;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.Camera;
@@ -27,53 +30,72 @@ public abstract class SharedCameraRecoilSystem : EntitySystem
     /// </summary>
     protected const float KickMagnitudeMax = 1f;
 
-    private ISawmill _log = default!;
+    [Dependency] private readonly SharedContentEyeSystem _eye = default!;
+    [Dependency] private readonly INetManager _net = default!;
 
     public override void Initialize()
     {
-        base.Initialize();
-        _log = Logger.GetSawmill($"ecs.systems.{nameof(SharedCameraRecoilSystem)}");
+        SubscribeLocalEvent<CameraRecoilComponent, GetEyeOffsetEvent>(OnCameraRecoilGetEyeOffset);
+    }
+
+    private void OnCameraRecoilGetEyeOffset(Entity<CameraRecoilComponent> ent, ref GetEyeOffsetEvent args)
+    {
+        args.Offset += ent.Comp.BaseOffset + ent.Comp.CurrentKick;
     }
 
     /// <summary>
     ///     Applies explosion/recoil/etc kickback to the view of the entity.
     /// </summary>
     /// <remarks>
-    ///     If the entity is missing <see cref="CameraRecoilComponent" /> and/or <see cref="SharedEyeComponent" />,
+    ///     If the entity is missing <see cref="CameraRecoilComponent" /> and/or <see cref="EyeComponent" />,
     ///     this call will have no effect. It is safe to call this function on any entity.
     /// </remarks>
     public abstract void KickCamera(EntityUid euid, Vector2 kickback, CameraRecoilComponent? component = null);
 
-    public override void FrameUpdate(float frameTime)
+    private void UpdateEyes(float frameTime)
     {
-        base.FrameUpdate(frameTime);
+        var query = AllEntityQuery<CameraRecoilComponent, EyeComponent>();
 
-        foreach (var entity in EntityManager.EntityQuery<SharedEyeComponent, CameraRecoilComponent>(true))
+        while (query.MoveNext(out var uid, out var recoil, out var eye))
         {
-            var recoil = entity.Item2;
-            var eye = entity.Item1;
-            var magnitude = recoil.CurrentKick.Length;
+            var magnitude = recoil.CurrentKick.Length();
             if (magnitude <= 0.005f)
             {
                 recoil.CurrentKick = Vector2.Zero;
-                eye.Offset = recoil.BaseOffset + recoil.CurrentKick;
             }
             else // Continually restore camera to 0.
             {
-                var normalized = recoil.CurrentKick.Normalized;
+                var normalized = recoil.CurrentKick.Normalized();
                 recoil.LastKickTime += frameTime;
                 var restoreRate = MathHelper.Lerp(RestoreRateMin, RestoreRateMax, Math.Min(1, recoil.LastKickTime / RestoreRateRamp));
                 var restore = normalized * restoreRate * frameTime;
                 var (x, y) = recoil.CurrentKick - restore;
-                if (Math.Sign(x) != Math.Sign(recoil.CurrentKick.X)) x = 0;
+                if (Math.Sign(x) != Math.Sign(recoil.CurrentKick.X))
+                    x = 0;
 
-                if (Math.Sign(y) != Math.Sign(recoil.CurrentKick.Y)) y = 0;
+                if (Math.Sign(y) != Math.Sign(recoil.CurrentKick.Y))
+                    y = 0;
 
-                recoil.CurrentKick = (x, y);
-
-                eye.Offset = recoil.BaseOffset + recoil.CurrentKick;
+                recoil.CurrentKick = new Vector2(x, y);
             }
+
+            if (recoil.CurrentKick == recoil.LastKick)
+                continue;
+
+            recoil.LastKick = recoil.CurrentKick;
+            _eye.UpdateEyeOffset((uid, eye));
         }
+    }
+
+    public override void Update(float frameTime)
+    {
+        if (_net.IsServer)
+            UpdateEyes(frameTime);
+    }
+
+    public override void FrameUpdate(float frameTime)
+    {
+        UpdateEyes(frameTime);
     }
 }
 
@@ -81,12 +103,12 @@ public abstract class SharedCameraRecoilSystem : EntitySystem
 [NetSerializable]
 public sealed class CameraKickEvent : EntityEventArgs
 {
-    public readonly EntityUid Euid;
+    public readonly NetEntity NetEntity;
     public readonly Vector2 Recoil;
 
-    public CameraKickEvent(EntityUid euid, Vector2 recoil)
+    public CameraKickEvent(NetEntity netEntity, Vector2 recoil)
     {
         Recoil = recoil;
-        Euid = euid;
+        NetEntity = netEntity;
     }
 }

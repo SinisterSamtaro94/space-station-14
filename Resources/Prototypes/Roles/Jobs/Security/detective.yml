@@ -1,13 +1,14 @@
 - type: job
   id: Detective
   name: job-name-detective
+  description: job-description-detective
   playTimeTracker: JobDetective
   requirements:
-  - !type:DepartmentTimeRequirement
-    department: Security
-    time: 3600
+    - !type:DepartmentTimeRequirement
+      department: Security
+      time: 54000 # 15 hours
   startingGear: DetectiveGear
-  icon: "Detective"
+  icon: "JobIconDetective"
   supervisors: job-supervisors-hos
   canBeAntag: false
   access:
@@ -15,21 +16,22 @@
   - Brig
   - Maintenance
   - Service
+  - Detective
+  - Cryogenics
+  - External
+  special:
+  - !type:AddImplantSpecial
+    implants: [ MindShieldImplant ]
 
 - type: startingGear
   id: DetectiveGear
   equipment:
-    jumpsuit: ClothingUniformJumpsuitDetective
-    back: ClothingBackpackSecurityFilled
-    shoes: ClothingShoesBootsJack
-    eyes: ClothingEyesGlassesSunglasses
-    head: ClothingHeadHatFedoraBrown
-    outerClothing: ClothingOuterVestDetective
+    eyes: ClothingEyesGlassesSecurity
     id: DetectivePDA
     ears: ClothingHeadsetSecurity
-    pocket1: ForensicPad
-    pocket2: ForensicScanner
-    belt: ClothingBeltHolster
-  innerclothingskirt: ClothingUniformJumpskirtDetective
-  satchel: ClothingBackpackSatchelSecurityFilled
-  duffelbag: ClothingBackpackDuffelSecurityFilled
+    belt: ClothingBeltHolsterFilled
+  storage:
+    back:
+    - Flash
+    - ForensicPad
+    - ForensicScanner

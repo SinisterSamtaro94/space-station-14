@@ -1,43 +1,49 @@
 using Content.Shared.Xenoarchaeology.Equipment;
 using JetBrains.Annotations;
 using Robust.Client.GameObjects;
+using Robust.Client.UserInterface;
 
 namespace Content.Client.Xenoarchaeology.Ui;
 
 [UsedImplicitly]
 public sealed class AnalysisConsoleBoundUserInterface : BoundUserInterface
 {
+    [ViewVariables]
     private AnalysisConsoleMenu? _consoleMenu;
 
-    public AnalysisConsoleBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
+    public AnalysisConsoleBoundUserInterface(EntityUid owner, Enum uiKey) : base(owner, uiKey)
     {
-
     }
 
     protected override void Open()
     {
         base.Open();
 
-        _consoleMenu = new AnalysisConsoleMenu();
+        _consoleMenu = this.CreateWindow<AnalysisConsoleMenu>();
 
-        _consoleMenu.OnClose += Close;
-        _consoleMenu.OpenCentered();
-
-        _consoleMenu.OnServerSelectionButtonPressed += _ =>
+        _consoleMenu.OnServerSelectionButtonPressed += () =>
         {
             SendMessage(new AnalysisConsoleServerSelectionMessage());
         };
-        _consoleMenu.OnScanButtonPressed += _ =>
+        _consoleMenu.OnScanButtonPressed += () =>
         {
             SendMessage(new AnalysisConsoleScanButtonPressedMessage());
         };
-        _consoleMenu.OnPrintButtonPressed += _ =>
+        _consoleMenu.OnPrintButtonPressed += () =>
         {
             SendMessage(new AnalysisConsolePrintButtonPressedMessage());
         };
-        _consoleMenu.OnDestroyButtonPressed += _ =>
+        _consoleMenu.OnExtractButtonPressed += () =>
         {
-            SendMessage(new AnalysisConsoleDestroyButtonPressedMessage());
+            SendMessage(new AnalysisConsoleExtractButtonPressedMessage());
+        };
+        _consoleMenu.OnUpBiasButtonPressed += () =>
+        {
+            SendMessage(new AnalysisConsoleBiasButtonPressedMessage(false));
+        };
+        _consoleMenu.OnDownBiasButtonPressed += () =>
+        {
+            SendMessage(new AnalysisConsoleBiasButtonPressedMessage(true));
         };
     }
 
@@ -47,7 +53,7 @@ public sealed class AnalysisConsoleBoundUserInterface : BoundUserInterface
 
         switch (state)
         {
-            case AnalysisConsoleScanUpdateState msg:
+            case AnalysisConsoleUpdateState msg:
                 _consoleMenu?.SetButtonsDisabled(msg);
                 _consoleMenu?.UpdateInformationDisplay(msg);
                 _consoleMenu?.UpdateProgressBar(msg);
@@ -61,7 +67,7 @@ public sealed class AnalysisConsoleBoundUserInterface : BoundUserInterface
 
         if (!disposing)
             return;
-        _consoleMenu?.AnalysisDestroyWindow?.Close();
+
         _consoleMenu?.Dispose();
     }
 }

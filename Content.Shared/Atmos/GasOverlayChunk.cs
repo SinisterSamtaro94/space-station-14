@@ -2,7 +2,6 @@ using Content.Shared.Atmos.EntitySystems;
 using Robust.Shared.Serialization;
 using Robust.Shared.Timing;
 using Robust.Shared.Utility;
-using System.Diagnostics.CodeAnalysis;
 using static Content.Shared.Atmos.EntitySystems.SharedGasTileOverlaySystem;
 
 namespace Content.Shared.Atmos
@@ -17,7 +16,7 @@ namespace Content.Shared.Atmos
         public readonly Vector2i Index;
         public readonly Vector2i Origin;
 
-        public GasOverlayData?[][] TileData = new GasOverlayData?[ChunkSize][];
+        public GasOverlayData[] TileData = new GasOverlayData[ChunkSize * ChunkSize];
 
         [NonSerialized]
         public GameTick LastUpdate;
@@ -26,24 +25,25 @@ namespace Content.Shared.Atmos
         {
             Index = index;
             Origin = Index * ChunkSize;
-
-            // For whatever reason, net serialize does not like multi_D arrays. So Jagged it is.
-            for (var i = 0; i < ChunkSize; i++)
-            {
-                TileData[i] = new GasOverlayData?[ChunkSize];
-            }
         }
 
-        public GasOverlayData? GetData(Vector2i gridIndices)
+        public GasOverlayChunk(GasOverlayChunk data)
         {
-            DebugTools.Assert(InBounds(gridIndices));
-            return TileData[gridIndices.X - Origin.X][gridIndices.Y - Origin.Y];
+            Index = data.Index;
+            Origin = data.Origin;
+
+            // This does not clone the opacity array. However, this chunk cloning is only used by the client,
+            // which never modifies that directly. So this should be fine.
+            Array.Copy(data.TileData, TileData, data.TileData.Length);
         }
 
-        public GasOverlayData? SetData(Vector2i gridIndices, GasOverlayData? data)
+        /// <summary>
+        /// Resolve a data index into <see cref="TileData"/> for the given grid index.
+        /// </summary>
+        public int GetDataIndex(Vector2i gridIndices)
         {
             DebugTools.Assert(InBounds(gridIndices));
-            return TileData[gridIndices.X - Origin.X][gridIndices.Y - Origin.Y] = data;
+            return (gridIndices.X - Origin.X) + (gridIndices.Y - Origin.Y) * ChunkSize;
         }
 
         private bool InBounds(Vector2i gridIndices)
@@ -57,40 +57,34 @@ namespace Content.Shared.Atmos
 
     public struct GasChunkEnumerator
     {
-        private GasOverlayChunk _chunk;
-        public int X = 0;
-        public int Y = -1;
-        private GasOverlayData?[] _column;
+        private readonly GasOverlayData[] _tileData;
+        private int _index = -1;
 
+        public int X = ChunkSize - 1;
+        public int Y = -1;
 
         public GasChunkEnumerator(GasOverlayChunk chunk)
         {
-            _chunk = chunk;
-            _column = _chunk.TileData[0];
+            _tileData = chunk.TileData;
         }
 
-        public bool MoveNext([NotNullWhen(true)] out GasOverlayData? gas)
+        public bool MoveNext(out GasOverlayData gas)
         {
-            while (X < ChunkSize)
+            while (++_index < _tileData.Length)
             {
-                // We want to increment Y before returning, but we also want it to match the current Y coordinate for
-                // the returned gas, so using a slightly different logic for the Y loop.
-                while (Y < ChunkSize - 1) 
+                X += 1;
+                if (X >= ChunkSize)
                 {
-                    Y++;
-                    gas = _column[Y];
-
-                    if (gas != null)
-                        return true;
+                    X = 0;
+                    Y += 1;
                 }
 
-                X++;
-                if (X < ChunkSize)
-                    _column = _chunk.TileData[X];
-                Y = -1;
+                gas = _tileData[_index];
+                if (!gas.Equals(default))
+                    return true;
             }
 
-            gas = null;
+            gas = default;
             return false;
         }
     }

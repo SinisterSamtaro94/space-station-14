@@ -1,3 +1,5 @@
+using Content.Shared.Hands.Components;
+
 namespace Content.Shared.Inventory;
 
 public partial class InventorySystem
@@ -9,5 +11,11 @@ public partial class InventorySystem
         InitializeEquip();
         InitializeRelay();
         InitializeSlots();
+    }
+
+    public override void Shutdown()
+    {
+        base.Shutdown();
+        ShutdownSlots();
     }
 }

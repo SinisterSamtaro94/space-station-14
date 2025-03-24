@@ -5,14 +5,12 @@ namespace Content.Server.SurveillanceCamera;
 ///     has a microphone that listens to speech.
 /// </summary>
 [RegisterComponent]
-public sealed class SurveillanceCameraSpeakerComponent : Component
+public sealed partial class SurveillanceCameraSpeakerComponent : Component
 {
     // mostly copied from Speech
     [DataField("speechEnabled")] public bool SpeechEnabled = true;
 
     [ViewVariables] public float SpeechSoundCooldown = 0.5f;
-
-    [ViewVariables] public readonly Queue<string> LastSpokenNames = new();
 
     public TimeSpan LastSoundPlayed = TimeSpan.Zero;
 }

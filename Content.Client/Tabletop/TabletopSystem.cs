@@ -1,3 +1,4 @@
+using System.Numerics;
 using Content.Client.Tabletop.UI;
 using Content.Client.Viewport;
 using Content.Shared.Tabletop;
@@ -10,13 +11,11 @@ using Robust.Client.Input;
 using Robust.Client.Player;
 using Robust.Client.UserInterface;
 using Robust.Client.UserInterface.CustomControls;
-using Robust.Shared.GameStates;
 using Robust.Shared.Input;
 using Robust.Shared.Input.Binding;
 using Robust.Shared.Map;
 using Robust.Shared.Timing;
 using static Robust.Shared.Input.Binding.PointerInputCmdHandler;
-using DrawDepth = Content.Shared.DrawDepth.DrawDepth;
 
 namespace Content.Client.Tabletop
 {
@@ -27,7 +26,8 @@ namespace Content.Client.Tabletop
         [Dependency] private readonly IUserInterfaceManager _uiManger = default!;
         [Dependency] private readonly IPlayerManager _playerManager = default!;
         [Dependency] private readonly IGameTiming _gameTiming = default!;
-        [Dependency] private readonly SharedAppearanceSystem _appearance = default!;
+        [Dependency] private readonly AppearanceSystem _appearance = default!;
+        [Dependency] private readonly SharedTransformSystem _transformSystem = default!;
 
         // Time in seconds to wait until sending the location of a dragged entity to the server again
         private const float Delay = 1f / 10; // 10 Hz
@@ -40,15 +40,17 @@ namespace Content.Client.Tabletop
 
         public override void Initialize()
         {
+            base.Initialize();
             UpdatesOutsidePrediction = true;
 
             CommandBinds.Builder
-                        .Bind(EngineKeyFunctions.Use, new PointerInputCmdHandler(OnUse, false))
-                        .Register<TabletopSystem>();
+                .Bind(EngineKeyFunctions.Use, new PointerInputCmdHandler(OnUse, false, true))
+                .Bind(EngineKeyFunctions.UseSecondary, new PointerInputCmdHandler(OnUseSecondary, true, true))
+                .Register<TabletopSystem>();
 
             SubscribeNetworkEvent<TabletopPlayEvent>(OnTabletopPlay);
-            SubscribeLocalEvent<TabletopDraggableComponent, ComponentHandleState>(HandleComponentState);
             SubscribeLocalEvent<TabletopDraggableComponent, ComponentRemove>(HandleDraggableRemoved);
+            SubscribeLocalEvent<TabletopDraggableComponent, AppearanceChangeEvent>(OnAppearanceChange);
         }
 
         private void HandleDraggableRemoved(EntityUid uid, TabletopDraggableComponent component, ComponentRemove args)
@@ -57,17 +59,14 @@ namespace Content.Client.Tabletop
                 StopDragging(false);
         }
 
-        public override void Update(float frameTime)
+        public override void FrameUpdate(float frameTime)
         {
-            // don't send network messages when doing prediction.
-            if (!_gameTiming.IsFirstTimePredicted)
-                return;
-
             if (_window == null)
                 return;
 
             // If there is no player entity, return
-            if (_playerManager.LocalPlayer is not { ControlledEntity: { } playerEntity }) return;
+            if (_playerManager.LocalEntity is not { } playerEntity)
+                return;
 
             if (!CanSeeTable(playerEntity, _table))
             {
@@ -88,21 +87,21 @@ namespace Content.Client.Tabletop
             // If the dragged entity has another dragging player, drop the item
             // This should happen if the local player is dragging an item, and another player grabs it out of their hand
             if (draggableComponent.DraggingPlayer != null &&
-                draggableComponent.DraggingPlayer != _playerManager.LocalPlayer?.Session.UserId)
+                draggableComponent.DraggingPlayer != _playerManager.LocalSession!.UserId)
             {
                 StopDragging(false);
                 return;
             }
 
             // Map mouse position to EntityCoordinates
-            var coords = _viewport.ScreenToMap(_inputManager.MouseScreenPosition.Position);
+            var coords = _viewport.PixelToMap(_inputManager.MouseScreenPosition.Position);
 
             // Clamp coordinates to viewport
             var clampedCoords = ClampPositionToViewport(coords, _viewport);
             if (clampedCoords.Equals(MapCoordinates.Nullspace)) return;
 
             // Move the entity locally every update
-            EntityManager.GetComponent<TransformComponent>(_draggedEntity.Value).WorldPosition = clampedCoords.Position;
+            _transformSystem.SetWorldPosition(_draggedEntity.Value, clampedCoords.Position);
 
             // Increment total time passed
             _timePassed += frameTime;
@@ -110,7 +109,7 @@ namespace Content.Client.Tabletop
             // Only send new position to server when Delay is reached
             if (_timePassed >= Delay && _table != null)
             {
-                RaiseNetworkEvent(new TabletopMoveEvent(_draggedEntity.Value, clampedCoords, _table.Value));
+                RaisePredictiveEvent(new TabletopMoveEvent(GetNetEntity(_draggedEntity.Value), clampedCoords, GetNetEntity(_table.Value)));
                 _timePassed -= Delay;
             }
         }
@@ -126,15 +125,15 @@ namespace Content.Client.Tabletop
             // Close the currently opened window, if it exists
             _window?.Close();
 
-            _table = msg.TableUid;
+            _table = GetEntity(msg.TableUid);
 
             // Get the camera entity that the server has created for us
-            var camera = msg.CameraUid;
+            var camera = GetEntity(msg.CameraUid);
 
             if (!EntityManager.TryGetComponent<EyeComponent>(camera, out var eyeComponent))
             {
                 // If there is no eye, print error and do not open any window
-                Logger.Error("Camera entity does not have eye component!");
+                Log.Error("Camera entity does not have eye component!");
                 return;
             }
 
@@ -149,18 +148,11 @@ namespace Content.Client.Tabletop
             _window.OnClose += OnWindowClose;
         }
 
-        private void HandleComponentState(EntityUid uid, TabletopDraggableComponent component, ref ComponentHandleState args)
-        {
-            if (args.Current is not TabletopDraggableComponentState state) return;
-
-            component.DraggingPlayer = state.DraggingPlayer;
-        }
-
         private void OnWindowClose()
         {
             if (_table != null)
             {
-                RaiseNetworkEvent(new TabletopStopPlayingEvent(_table.Value));
+                RaiseNetworkEvent(new TabletopStopPlayingEvent(GetNetEntity(_table.Value)));
             }
 
             StopDragging();
@@ -169,6 +161,9 @@ namespace Content.Client.Tabletop
 
         private bool OnUse(in PointerInputCmdArgs args)
         {
+            if (!_gameTiming.IsFirstTimePredicted)
+                return false;
+
             return args.State switch
             {
                 BoundKeyState.Down => OnMouseDown(args),
@@ -176,15 +171,30 @@ namespace Content.Client.Tabletop
                 _ => false
             };
         }
+        private bool OnUseSecondary(in PointerInputCmdArgs args)
+        {
+            if (_draggedEntity != null && _table != null)
+            {
+                var ev = new TabletopRequestTakeOut
+                {
+                    Entity = GetNetEntity(_draggedEntity.Value),
+                    TableUid = GetNetEntity(_table.Value)
+                };
+                RaiseNetworkEvent(ev);
+            }
+            return false;
+        }
 
         private bool OnMouseDown(in PointerInputCmdArgs args)
         {
             // Return if no player entity
-            if (_playerManager.LocalPlayer is not {ControlledEntity: { } playerEntity})
+            if (_playerManager.LocalEntity is not { } playerEntity)
                 return false;
 
+            var entity = args.EntityUid;
+
             // Return if can not see table or stunned/no hands
-            if (!CanSeeTable(playerEntity, _table) || !CanDrag(playerEntity, args.EntityUid, out _))
+            if (!CanSeeTable(playerEntity, _table) || !CanDrag(playerEntity, entity, out _))
             {
                 return false;
             }
@@ -195,7 +205,7 @@ namespace Content.Client.Tabletop
                 return false;
             }
 
-            StartDragging(args.EntityUid, viewport);
+            StartDragging(entity, viewport);
             return true;
         }
 
@@ -203,6 +213,24 @@ namespace Content.Client.Tabletop
         {
             StopDragging();
             return false;
+        }
+
+        private void OnAppearanceChange(EntityUid uid, TabletopDraggableComponent comp, ref AppearanceChangeEvent args)
+        {
+            if (args.Sprite == null)
+                return;
+
+            // TODO: maybe this can work more nicely, by maybe only having to set the item to "being dragged", and have
+            //  the appearance handle the rest
+            if (_appearance.TryGetData<Vector2>(uid, TabletopItemVisuals.Scale, out var scale, args.Component))
+            {
+                args.Sprite.Scale = scale;
+            }
+
+            if (_appearance.TryGetData<int>(uid, TabletopItemVisuals.DrawDepth, out var drawDepth, args.Component))
+            {
+                args.Sprite.DrawDepth = drawDepth;
+            }
         }
 
         #endregion
@@ -216,13 +244,7 @@ namespace Content.Client.Tabletop
         /// <param name="viewport">The viewport in which we are dragging.</param>
         private void StartDragging(EntityUid draggedEntity, ScalingViewport viewport)
         {
-            RaiseNetworkEvent(new TabletopDraggingPlayerChangedEvent(draggedEntity, true));
-
-            if (EntityManager.TryGetComponent<AppearanceComponent>(draggedEntity, out var appearance))
-            {
-                _appearance.SetData(draggedEntity, TabletopItemVisuals.Scale, new Vector2(1.25f, 1.25f), appearance);
-                _appearance.SetData(draggedEntity, TabletopItemVisuals.DrawDepth, (int) DrawDepth.Items + 1, appearance);
-            }
+            RaisePredictiveEvent(new TabletopDraggingPlayerChangedEvent(GetNetEntity(draggedEntity), true));
 
             _draggedEntity = draggedEntity;
             _viewport = viewport;
@@ -237,7 +259,8 @@ namespace Content.Client.Tabletop
             // Set the dragging player on the component to noone
             if (broadcast && _draggedEntity != null && EntityManager.HasComponent<TabletopDraggableComponent>(_draggedEntity.Value))
             {
-                RaiseNetworkEvent(new TabletopDraggingPlayerChangedEvent(_draggedEntity.Value, false));
+                RaisePredictiveEvent(new TabletopMoveEvent(GetNetEntity(_draggedEntity.Value), Transforms.GetMapCoordinates(_draggedEntity.Value), GetNetEntity(_table!.Value)));
+                RaisePredictiveEvent(new TabletopDraggingPlayerChangedEvent(GetNetEntity(_draggedEntity.Value), false));
             }
 
             _draggedEntity = null;
@@ -255,7 +278,8 @@ namespace Content.Client.Tabletop
             if (coordinates == MapCoordinates.Nullspace) return MapCoordinates.Nullspace;
 
             var eye = viewport.Eye;
-            if (eye == null) return MapCoordinates.Nullspace;
+            if (eye == null)
+                return MapCoordinates.Nullspace;
 
             var size = (Vector2) viewport.ViewportSize / EyeManager.PixelsPerMeter; // Convert to tiles instead of pixels
             var eyePosition = eye.Position.Position;

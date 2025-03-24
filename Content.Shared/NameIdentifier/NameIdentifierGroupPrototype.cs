@@ -2,11 +2,11 @@
 
 namespace Content.Shared.NameIdentifier;
 
-[Prototype("nameIdentifierGroup")]
-public sealed class NameIdentifierGroupPrototype : IPrototype
+[Prototype]
+public sealed partial class NameIdentifierGroupPrototype : IPrototype
 {
-    [IdDataFieldAttribute]
-    public string ID { get; } = default!;
+    [IdDataField]
+    public string ID { get; private set; } = default!;
 
     /// <summary>
     ///     Should the identifier become the full name, or just append?
@@ -18,7 +18,7 @@ public sealed class NameIdentifierGroupPrototype : IPrototype
     public string? Prefix;
 
     [DataField("maxValue")]
-    public int MaxValue = 999;
+    public int MaxValue = 1000;
 
     [DataField("minValue")]
     public int MinValue = 0;

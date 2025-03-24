@@ -1,13 +1,14 @@
 - type: job
   id: Bartender
   name: job-name-bartender
+  description: job-description-bartender
   playTimeTracker: JobBartender
   requirements:
     - !type:DepartmentTimeRequirement
       department: Civilian
       time: 1800
   startingGear: BartenderGear
-  icon: "Bartender"
+  icon: "JobIconBartender"
   supervisors: job-supervisors-hop
   access:
   - Service
@@ -20,13 +21,9 @@
 - type: startingGear
   id: BartenderGear
   equipment:
-    head: ClothingHeadHatTophat
-    jumpsuit: ClothingUniformJumpsuitBartender
-    outerClothing: ClothingOuterVestKevlar
-    back: ClothingBackpackFilled
     shoes: ClothingShoesColorBlack
     id: BartenderPDA
     ears: ClothingHeadsetService
-  innerclothingskirt: ClothingUniformJumpskirtBartender
-  satchel: ClothingBackpackSatchelFilled
-  duffelbag: ClothingBackpackDuffelFilled
+  #storage:
+    #back:
+    #- Stuff

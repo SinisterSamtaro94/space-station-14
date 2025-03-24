@@ -6,23 +6,19 @@ namespace Content.Shared.Store;
 /// <summary>
 ///     Used to define different categories for a store.
 /// </summary>
-[Prototype("storeCategory")]
+[Prototype]
 [Serializable, NetSerializable, DataDefinition]
-public sealed class StoreCategoryPrototype : IPrototype
+public sealed partial class StoreCategoryPrototype : IPrototype
 {
     private string _name = string.Empty;
 
     [ViewVariables]
     [IdDataField]
-    public string ID { get; } = default!;
+    public string ID { get; private set; } = default!;
 
     [DataField("name")]
-    public string Name
-    {
-        get => _name;
-        private set => _name = Loc.GetString(value);
-    }
+    public string Name { get; private set; } = "";
 
     [DataField("priority")]
-    public int Priority { get; } = 0;
+    public int Priority { get; private set; } = 0;
 }

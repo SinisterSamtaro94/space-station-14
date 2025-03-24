@@ -1,6 +1,7 @@
 using Robust.Client.GameObjects;
 using Robust.Shared.Timing;
 using Content.Shared.Forensics;
+using Robust.Client.UserInterface;
 
 namespace Content.Client.Forensics
 {
@@ -8,22 +9,22 @@ namespace Content.Client.Forensics
     {
         [Dependency] private readonly IGameTiming _gameTiming = default!;
 
+        [ViewVariables]
         private ForensicScannerMenu? _window;
 
+        [ViewVariables]
         private TimeSpan _printCooldown;
 
-        public ForensicScannerBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
+        public ForensicScannerBoundUserInterface(EntityUid owner, Enum uiKey) : base(owner, uiKey)
         {
         }
 
         protected override void Open()
         {
             base.Open();
-            _window = new ForensicScannerMenu();
-            _window.OnClose += Close;
+            _window = this.CreateWindow<ForensicScannerMenu>();
             _window.Print.OnPressed += _ => Print();
             _window.Clear.OnPressed += _ => Clear();
-            _window.OpenCentered();
         }
 
         private void Print()
@@ -60,6 +61,7 @@ namespace Content.Client.Forensics
 
             _printCooldown = cast.PrintCooldown;
 
+            // TODO: Fix this
             if (cast.PrintReadyAt > _gameTiming.CurTime)
                 Timer.Spawn(cast.PrintReadyAt - _gameTiming.CurTime, () =>
                 {
@@ -68,15 +70,6 @@ namespace Content.Client.Forensics
                 });
 
             _window.UpdateState(cast);
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            base.Dispose(disposing);
-            if (!disposing)
-                return;
-
-            _window?.Dispose();
         }
     }
 }

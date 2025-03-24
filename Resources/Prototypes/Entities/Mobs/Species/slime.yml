@@ -1,6 +1,6 @@
 - type: entity
   name: Urist McSlime
-  parent: BaseMobOrganic
+  parent: BaseMobSpeciesOrganic
   id: BaseMobSlimePerson
   abstract: true
   components:
@@ -11,27 +11,70 @@
     state: full
   - type: Body
     prototype: Slime
-  - type: Humanoid
+    requiredLegs: 2
+  # they like eat it idk lol
+  - type: Storage
+    clickInsert: false
+    openOnActivate: false
+    grid:
+    - 0,0,1,2
+    maxItemSize: Large
+    storageInsertSound:
+      path: /Audio/Voice/Slime/slime_squish.ogg
+  - type: ContainerContainer
+    containers:
+      storagebase: !type:Container
+        ents: []
+  - type: UserInterface
+    interfaces:
+      enum.StorageUiKey.Key:
+        type: StorageBoundUserInterface
+      enum.HumanoidMarkingModifierKey.Key:
+        type: HumanoidMarkingModifierBoundUserInterface
+      enum.StrippingUiKey.Key:
+        type: StrippableBoundUserInterface
+  # to prevent bag open/honk spam
+  - type: UseDelay
+    delay: 0.5
+  - type: HumanoidAppearance
     species: SlimePerson
   - type: Speech
+    speechVerb: Slime
     speechSounds: Slime
+    allowedEmotes: ['Squish']
+  - type: TypingIndicator
+    proto: slime
+  - type: Vocal
+    sounds:
+      Male: MaleSlime
+      Female: FemaleSlime
+      Unsexed: MaleSlime
   - type: Damageable
     damageContainer: Biological
     damageModifierSet: Slime
+  - type: PassiveDamage # Around 8 damage a minute healed
+    allowedStates:
+    - Alive
+    damageCap: 65
+    damage:
+      types:
+        Heat: -0.14
+      groups:
+        Brute: -0.14
+  - type: DamageVisuals
+    damageOverlayGroups:
+      Brute:
+        sprite: Mobs/Effects/brute_damage.rsi
+        color: "#2cf274"
+      Burn:
+        sprite: Mobs/Effects/burn_damage.rsi
   - type: Bloodstream
     bloodReagent: Slime # TODO Color slime blood based on their slime color or smth
-    bloodlossDamage:
-      types:
-        Bloodloss:
-          1
-    bloodlossHealDamage:
-      types:
-        Bloodloss:
-          -0.25
   - type: Barotrauma
     damage:
       types:
-        Blunt: 0.3 #per second, scales with pressure and other constants. Twice as much as humans.
+        Blunt: 0.50 #per second, scales with pressure and other constants.
+        Heat: 0.2 # 0.1 more than humans, i feel like low pressure would make slime boil more than blunt stretch them so i decided on this instead.
   - type: Reactive
     groups:
       Flammable: [ Touch ]
@@ -45,10 +88,10 @@
       methods: [ Touch ]
       effects:
       - !type:HealthChange
-        scaled: true
+        scaleByQuantity: true
         damage:
           types:
-            Heat: 2
+            Heat: 0.1
       - !type:PopupMessage
         type: Local
         visualType: Large
@@ -67,18 +110,25 @@
       types:
         Asphyxiation: -1.0
     maxSaturation: 15
-  - type: DiseaseCarrier
-    naturalImmunities:
-    - Ultragigacancer
-    - BleedersBite
+  - type: Inventory
+    femaleDisplacements:
+      jumpsuit:
+        sizeMaps:
+          32:
+            sprite: Mobs/Species/Human/displacement.rsi
+            state: jumpsuit-female
 
 - type: entity
-  save: false
-  name: Urist McHands
   parent: MobHumanDummy
   id: MobSlimePersonDummy
-  noSpawn: true
-  description: A dummy slime meant to be used in character setup.
+  categories: [ HideSpawnMenu ]
   components:
-    - type: Humanoid
-      species: SlimePerson
+  - type: HumanoidAppearance
+    species: SlimePerson
+  - type: Inventory
+    femaleDisplacements:
+      jumpsuit:
+        sizeMaps:
+          32:
+            sprite: Mobs/Species/Human/displacement.rsi
+            state: jumpsuit-female

@@ -2,33 +2,36 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Content.Server.Construction.Components;
-using Content.Server.DoAfter;
-using Content.Server.Hands.Components;
-using Content.Server.Storage.Components;
 using Content.Shared.ActionBlocker;
 using Content.Shared.Construction;
 using Content.Shared.Construction.Prototypes;
 using Content.Shared.Construction.Steps;
 using Content.Shared.Coordinates;
 using Content.Shared.Database;
+using Content.Shared.DoAfter;
+using Content.Shared.Hands.Components;
 using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Interaction;
 using Content.Shared.Inventory;
+using Content.Shared.Storage;
+using Content.Shared.Whitelist;
 using Robust.Shared.Containers;
+using Robust.Shared.Map;
 using Robust.Shared.Player;
-using Robust.Shared.Players;
 using Robust.Shared.Timing;
 
 namespace Content.Server.Construction
 {
     public sealed partial class ConstructionSystem
     {
-
+        [Dependency] private readonly IComponentFactory _factory = default!;
         [Dependency] private readonly InventorySystem _inventorySystem = default!;
         [Dependency] private readonly SharedInteractionSystem _interactionSystem = default!;
         [Dependency] private readonly ActionBlockerSystem _actionBlocker = default!;
         [Dependency] private readonly SharedHandsSystem _handsSystem = default!;
         [Dependency] private readonly EntityLookupSystem _lookupSystem = default!;
+        [Dependency] private readonly SharedTransformSystem _transformSystem = default!;
+        [Dependency] private readonly EntityWhitelistSystem _whitelistSystem = default!;
 
         // --- WARNING! LEGACY CODE AHEAD! ---
         // This entire file contains the legacy code for initial construction.
@@ -49,9 +52,9 @@ namespace Content.Server.Construction
         {
             foreach (var item in _handsSystem.EnumerateHeld(user))
             {
-                if (TryComp(item, out ServerStorageComponent? storage))
+                if (TryComp(item, out StorageComponent? storage))
                 {
-                    foreach (var storedEntity in storage.StoredEntities!)
+                    foreach (var storedEntity in storage.Container.ContainedEntities!)
                     {
                         yield return storedEntity;
                     }
@@ -64,10 +67,12 @@ namespace Content.Server.Construction
             {
                 while (containerSlotEnumerator.MoveNext(out var containerSlot))
                 {
-                    if(!containerSlot.ContainedEntity.HasValue) continue;
-                    if (EntityManager.TryGetComponent(containerSlot.ContainedEntity.Value, out ServerStorageComponent? storage))
+                    if(!containerSlot.ContainedEntity.HasValue)
+                        continue;
+
+                    if (EntityManager.TryGetComponent(containerSlot.ContainedEntity.Value, out StorageComponent? storage))
                     {
-                        foreach (var storedEntity in storage.StoredEntities!)
+                        foreach (var storedEntity in storage.Container.ContainedEntities)
                         {
                             yield return storedEntity;
                         }
@@ -77,7 +82,7 @@ namespace Content.Server.Construction
                 }
             }
 
-            var pos = Transform(user).MapPosition;
+            var pos = _transformSystem.GetMapCoordinates(user);
 
             foreach (var near in _lookupSystem.GetEntitiesInRange(pos, 2f, LookupFlags.Contained | LookupFlags.Dynamic | LookupFlags.Sundries | LookupFlags.Approximate))
             {
@@ -89,14 +94,21 @@ namespace Content.Server.Construction
         }
 
         // LEGACY CODE. See warning at the top of the file!
-        private async Task<EntityUid?> Construct(EntityUid user, string materialContainer, ConstructionGraphPrototype graph, ConstructionGraphEdge edge, ConstructionGraphNode targetNode)
+        private async Task<EntityUid?> Construct(
+            EntityUid user,
+            string materialContainer,
+            ConstructionGraphPrototype graph,
+            ConstructionGraphEdge edge,
+            ConstructionGraphNode targetNode,
+            EntityCoordinates coords,
+            Angle angle = default)
         {
             // We need a place to hold our construction items!
             var container = _container.EnsureContainer<Container>(user, materialContainer, out var existed);
 
             if (existed)
             {
-                _popup.PopupCursor(Loc.GetString("construction-system-construct-cannot-start-another-construction"), Filter.Entities(user));
+                _popup.PopupEntity(Loc.GetString("construction-system-construct-cannot-start-another-construction"), user, user);
                 return null;
             }
 
@@ -108,8 +120,8 @@ namespace Content.Server.Construction
             // But I'd rather do this shit than risk having collisions with other containers.
             Container GetContainer(string name)
             {
-                if (containers.ContainsKey(name))
-                    return containers[name];
+                if (containers.TryGetValue(name, out var container1))
+                    return container1;
 
                 while (true)
                 {
@@ -128,14 +140,14 @@ namespace Content.Server.Construction
             {
                 foreach (var entity in container.ContainedEntities.ToArray())
                 {
-                    container.Remove(entity);
+                    _container.Remove(entity, container);
                 }
 
                 foreach (var cont in containers.Values)
                 {
                     foreach (var entity in cont.ContainedEntities.ToArray())
                     {
-                        cont.Remove(entity);
+                        _container.Remove(entity, cont);
                     }
                 }
 
@@ -145,16 +157,17 @@ namespace Content.Server.Construction
 
             void ShutdownContainers()
             {
-                container.Shutdown();
+                _container.ShutdownContainer(container);
                 foreach (var c in containers.Values.ToArray())
                 {
-                    c.Shutdown();
+                    _container.ShutdownContainer(c);
                 }
             }
 
             var failed = false;
 
             var steps = new List<ConstructionGraphStep>();
+            var used = new HashSet<EntityUid>();
 
             foreach (var step in edge.Steps)
             {
@@ -170,6 +183,11 @@ namespace Content.Server.Construction
                             if (!materialStep.EntityValid(entity, out var stack))
                                 continue;
 
+                            if (used.Contains(entity))
+                                continue;
+
+                            // TODO allow taking from several stacks.
+                            // Also update crafting steps to check if it works.
                             var splitStack = _stackSystem.Split(entity, materialStep.Amount, user.ToCoordinates(0, 0), stack);
 
                             if (splitStack == null)
@@ -177,11 +195,11 @@ namespace Content.Server.Construction
 
                             if (string.IsNullOrEmpty(materialStep.Store))
                             {
-                                if (!container.Insert(splitStack.Value))
+                                if (!_container.Insert(splitStack.Value, container))
                                     continue;
                             }
-                            else if (!GetContainer(materialStep.Store).Insert(splitStack.Value))
-                                    continue;
+                            else if (!_container.Insert(splitStack.Value, GetContainer(materialStep.Store)))
+                                continue;
 
                             handled = true;
                             break;
@@ -190,20 +208,30 @@ namespace Content.Server.Construction
                         break;
 
                     case ArbitraryInsertConstructionGraphStep arbitraryStep:
-                        foreach (var entity in EnumerateNearby(user))
+                        foreach (var entity in new HashSet<EntityUid>(EnumerateNearby(user)))
                         {
-                            if (!arbitraryStep.EntityValid(entity, EntityManager))
+                            if (!arbitraryStep.EntityValid(entity, EntityManager, _factory))
                                 continue;
+
+                            if (used.Contains(entity))
+                                continue;
+
+                            // Dump out any stored entities in used entity
+                            if (TryComp<StorageComponent>(entity, out var storage))
+                            {
+                                _container.EmptyContainer(storage.Container);
+                            }
 
                             if (string.IsNullOrEmpty(arbitraryStep.Store))
                             {
-                                if (!container.Insert(entity))
+                                if (!_container.Insert(entity, container))
                                     continue;
                             }
-                            else if (!GetContainer(arbitraryStep.Store).Insert(entity))
+                            else if (!_container.Insert(entity, GetContainer(arbitraryStep.Store)))
                                 continue;
 
                             handled = true;
+                            used.Add(entity);
                             break;
                         }
 
@@ -221,18 +249,19 @@ namespace Content.Server.Construction
 
             if (failed)
             {
-                _popup.PopupCursor(Loc.GetString("construction-system-construct-no-materials"), Filter.Entities(user));
+                _popup.PopupEntity(Loc.GetString("construction-system-construct-no-materials"), user, user);
                 FailCleanup();
                 return null;
             }
 
-            var doAfterArgs = new DoAfterEventArgs(user, doAfterTime)
+            var doAfterArgs = new DoAfterArgs(EntityManager, user, doAfterTime, new AwaitedDoAfterEvent(), null)
             {
                 BreakOnDamage = true,
-                BreakOnStun = true,
-                BreakOnTargetMove = false,
-                BreakOnUserMove = true,
+                BreakOnMove = true,
                 NeedHand = false,
+                // allow simultaneously starting several construction jobs using the same stack of materials.
+                CancelDuplicate = false,
+                BlockDuplicate = false,
             };
 
             if (await _doAfterSystem.WaitDoAfter(doAfterArgs) == DoAfterStatus.Cancelled)
@@ -241,12 +270,12 @@ namespace Content.Server.Construction
                 return null;
             }
 
-            var newEntityProto = graph.Nodes[edge.Target].Entity;
-            var newEntity = EntityManager.SpawnEntity(newEntityProto, EntityManager.GetComponent<TransformComponent>(user).Coordinates);
+            var newEntityProto = graph.Nodes[edge.Target].Entity.GetId(null, user, new(EntityManager));
+            var newEntity = EntityManager.SpawnAttachedTo(newEntityProto, coords, rotation: angle);
 
             if (!TryComp(newEntity, out ConstructionComponent? construction))
             {
-                _sawmill.Error($"Initial construction does not have a valid target entity! It is missing a ConstructionComponent.\nGraph: {graph.ID}, Initial Target: {edge.Target}, Ent. Prototype: {newEntityProto}\nCreated Entity {ToPrettyString(newEntity)} will be deleted.");
+                Log.Error($"Initial construction does not have a valid target entity! It is missing a ConstructionComponent.\nGraph: {graph.ID}, Initial Target: {edge.Target}, Ent. Prototype: {newEntityProto}\nCreated Entity {ToPrettyString(newEntity)} will be deleted.");
                 Del(newEntity); // Screw you, make proper construction graphs.
                 return null;
             }
@@ -261,8 +290,8 @@ namespace Content.Server.Construction
 
                 foreach (var entity in cont.ContainedEntities.ToArray())
                 {
-                    cont.ForceRemove(entity);
-                    newCont.Insert(entity);
+                    _container.Remove(entity, cont, reparent: false, force: true);
+                    _container.Insert(entity, newCont);
                 }
             }
 
@@ -287,43 +316,55 @@ namespace Content.Server.Construction
             return newEntity;
         }
 
-        // LEGACY CODE. See warning at the top of the file!
         private async void HandleStartItemConstruction(TryStartItemConstructionMessage ev, EntitySessionEventArgs args)
         {
-            if (!_prototypeManager.TryIndex(ev.PrototypeName, out ConstructionPrototype? constructionPrototype))
+            if (args.SenderSession.AttachedEntity is {Valid: true} user)
+                await TryStartItemConstruction(ev.PrototypeName, user);
+        }
+
+        // LEGACY CODE. See warning at the top of the file!
+        public async Task<bool> TryStartItemConstruction(string prototype, EntityUid user)
+        {
+            if (!PrototypeManager.TryIndex(prototype, out ConstructionPrototype? constructionPrototype))
             {
-                _sawmill.Error($"Tried to start construction of invalid recipe '{ev.PrototypeName}'!");
-                return;
+                Log.Error($"Tried to start construction of invalid recipe '{prototype}'!");
+                return false;
             }
 
-            if (!_prototypeManager.TryIndex(constructionPrototype.Graph,
+            if (!PrototypeManager.TryIndex(constructionPrototype.Graph,
                     out ConstructionGraphPrototype? constructionGraph))
             {
-                _sawmill.Error(
-                    $"Invalid construction graph '{constructionPrototype.Graph}' in recipe '{ev.PrototypeName}'!");
-                return;
+                Log.Error(
+                    $"Invalid construction graph '{constructionPrototype.Graph}' in recipe '{prototype}'!");
+                return false;
+            }
+
+            if (_whitelistSystem.IsWhitelistFail(constructionPrototype.EntityWhitelist, user))
+            {
+                _popup.PopupEntity(Loc.GetString("construction-system-cannot-start"), user, user);
+                return false;
             }
 
             var startNode = constructionGraph.Nodes[constructionPrototype.StartNode];
             var targetNode = constructionGraph.Nodes[constructionPrototype.TargetNode];
             var pathFind = constructionGraph.Path(startNode.Name, targetNode.Name);
 
-            if (args.SenderSession.AttachedEntity is not {Valid: true} user || !_actionBlocker.CanInteract(user, null))
-                return;
+            if (!_actionBlocker.CanInteract(user, null))
+                return false;
 
             if (!HasComp<HandsComponent>(user))
-                return;
+                return false;
 
             foreach (var condition in constructionPrototype.Conditions)
             {
                 if (!condition.Condition(user, user.ToCoordinates(0, 0), Direction.South))
-                    return;
+                    return false;
             }
 
             if (pathFind == null)
             {
                 throw new InvalidDataException(
-                    $"Can't find path from starting node to target node in construction! Recipe: {ev.PrototypeName}");
+                    $"Can't find path from starting node to target node in construction! Recipe: {prototype}");
             }
 
             var edge = startNode.GetEdge(pathFind[0].Name);
@@ -331,7 +372,7 @@ namespace Content.Server.Construction
             if (edge == null)
             {
                 throw new InvalidDataException(
-                    $"Can't find edge from starting node to the next node in pathfinding! Recipe: {ev.PrototypeName}");
+                    $"Can't find edge from starting node to the next node in pathfinding! Recipe: {prototype}");
             }
 
             // No support for conditions here!
@@ -345,41 +386,53 @@ namespace Content.Server.Construction
                 }
             }
 
-            if (await Construct(user, "item_construction", constructionGraph, edge, targetNode) is not { Valid: true } item)
-                return;
+            if (await Construct(
+                    user,
+                    "item_construction",
+                    constructionGraph,
+                    edge,
+                    targetNode,
+                    Transform(user).Coordinates) is not { Valid: true } item)
+                return false;
 
             // Just in case this is a stack, attempt to merge it. If it isn't a stack, this will just normally pick up
             // or drop the item as normal.
             _stackSystem.TryMergeToHands(item, user);
+            return true;
         }
 
         // LEGACY CODE. See warning at the top of the file!
         private async void HandleStartStructureConstruction(TryStartStructureConstructionMessage ev, EntitySessionEventArgs args)
         {
-
-            if (!_prototypeManager.TryIndex(ev.PrototypeName, out ConstructionPrototype? constructionPrototype))
+            if (!PrototypeManager.TryIndex(ev.PrototypeName, out ConstructionPrototype? constructionPrototype))
             {
-                _sawmill.Error($"Tried to start construction of invalid recipe '{ev.PrototypeName}'!");
+                Log.Error($"Tried to start construction of invalid recipe '{ev.PrototypeName}'!");
                 RaiseNetworkEvent(new AckStructureConstructionMessage(ev.Ack));
                 return;
             }
 
-            if (!_prototypeManager.TryIndex(constructionPrototype.Graph, out ConstructionGraphPrototype? constructionGraph))
+            if (!PrototypeManager.TryIndex(constructionPrototype.Graph, out ConstructionGraphPrototype? constructionGraph))
             {
-                _sawmill.Error($"Invalid construction graph '{constructionPrototype.Graph}' in recipe '{ev.PrototypeName}'!");
+                Log.Error($"Invalid construction graph '{constructionPrototype.Graph}' in recipe '{ev.PrototypeName}'!");
                 RaiseNetworkEvent(new AckStructureConstructionMessage(ev.Ack));
                 return;
             }
 
             if (args.SenderSession.AttachedEntity is not {Valid: true} user)
             {
-                _sawmill.Error($"Client sent {nameof(TryStartStructureConstructionMessage)} with no attached entity!");
+                Log.Error($"Client sent {nameof(TryStartStructureConstructionMessage)} with no attached entity!");
+                return;
+            }
+
+            if (_whitelistSystem.IsWhitelistFail(constructionPrototype.EntityWhitelist, user))
+            {
+                _popup.PopupEntity(Loc.GetString("construction-system-cannot-start"), user, user);
                 return;
             }
 
             if (_container.IsEntityInContainer(user))
             {
-                _popup.PopupCursor(Loc.GetString("construction-system-inside-container"), Filter.Entities(user));
+                _popup.PopupEntity(Loc.GetString("construction-system-inside-container"), user, user);
                 return;
             }
 
@@ -392,7 +445,7 @@ namespace Content.Server.Construction
             {
                 if (!set.Add(ev.Ack))
                 {
-                    _popup.PopupCursor(Loc.GetString("construction-system-already-building"), Filter.Entities(user));
+                    _popup.PopupEntity(Loc.GetString("construction-system-already-building"), user, user);
                     return;
                 }
             }
@@ -402,9 +455,11 @@ namespace Content.Server.Construction
                 _beingBuilt[args.SenderSession] = newSet;
             }
 
+            var location = GetCoordinates(ev.Location);
+
             foreach (var condition in constructionPrototype.Conditions)
             {
-                if (!condition.Condition(user, ev.Location, ev.Angle.GetCardinalDir()))
+                if (!condition.Condition(user, location, ev.Angle.GetCardinalDir()))
                 {
                     Cleanup();
                     return;
@@ -423,7 +478,7 @@ namespace Content.Server.Construction
                 return;
             }
 
-            var mapPos = ev.Location.ToMap(EntityManager);
+            var mapPos = location.ToMap(EntityManager, _transformSystem);
             var predicate = GetPredicate(constructionPrototype.CanBuildInImpassable, mapPos);
 
             if (!_interactionSystem.InRangeUnobstructed(user, mapPos, predicate: predicate))
@@ -455,7 +510,7 @@ namespace Content.Server.Construction
                 switch (step)
                 {
                     case EntityInsertConstructionGraphStep entityInsert:
-                        if (entityInsert.EntityValid(holding, EntityManager))
+                        if (entityInsert.EntityValid(holding, EntityManager, _factory))
                             valid = true;
                         break;
                     case ToolConstructionGraphStep _:
@@ -472,25 +527,20 @@ namespace Content.Server.Construction
                 return;
             }
 
-            if (await Construct(user, (ev.Ack + constructionPrototype.GetHashCode()).ToString(), constructionGraph,
-                    edge, targetNode) is not {Valid: true} structure)
+            if (await Construct(user,
+                    (ev.Ack + constructionPrototype.GetHashCode()).ToString(),
+                    constructionGraph,
+                    edge,
+                    targetNode,
+                    GetCoordinates(ev.Location),
+                    constructionPrototype.CanRotate ? ev.Angle : Angle.Zero) is not {Valid: true} structure)
             {
                 Cleanup();
                 return;
             }
 
-            // We do this to be able to move the construction to its proper position in case it's anchored...
-            // Oh wow transform anchoring is amazing wow I love it!!!!
-            var wasAnchored = EntityManager.GetComponent<TransformComponent>(structure).Anchored;
-            EntityManager.GetComponent<TransformComponent>(structure).Anchored = false;
-
-            EntityManager.GetComponent<TransformComponent>(structure).Coordinates = ev.Location;
-            EntityManager.GetComponent<TransformComponent>(structure).LocalRotation = constructionPrototype.CanRotate ? ev.Angle : Angle.Zero;
-
-            EntityManager.GetComponent<TransformComponent>(structure).Anchored = wasAnchored;
-
-            RaiseNetworkEvent(new AckStructureConstructionMessage(ev.Ack));
-            _adminLogger.Add(LogType.Construction, LogImpact.Low, $"{ToPrettyString(user):player} has started construction on the ghost of a {ev.PrototypeName}");
+            RaiseNetworkEvent(new AckStructureConstructionMessage(ev.Ack, GetNetEntity(structure)));
+            _adminLogger.Add(LogType.Construction, LogImpact.Low, $"{ToPrettyString(user):player} has turned a {ev.PrototypeName} construction ghost into {ToPrettyString(structure)} at {Transform(structure).Coordinates}");
             Cleanup();
         }
     }

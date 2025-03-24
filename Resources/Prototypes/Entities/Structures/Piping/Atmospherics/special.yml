@@ -13,12 +13,44 @@
   - type: Sprite
     sprite: Structures/Piping/Atmospherics/tinyfan.rsi
     state: icon
-    netsync: false
   - type: Fixtures
     fixtures:
-    - shape:
-        !type:PhysShapeAabb
-          bounds: "-0.5,-0.5,0.5,0.5"
+      fix1:
+        shape:
+          !type:PhysShapeAabb
+            bounds: "-0.5,-0.5,0.5,0.5"
   - type: Airtight
     noAirWhenFullyAirBlocked: false
   - type: Clickable
+  - type: Tag
+    tags:
+      - SpreaderIgnore
+
+- type: entity
+  id: AtmosDeviceFanDirectional
+  name: directional fan
+  description: A thin fan, stopping the movement of gases across it.
+  placement:
+    mode: SnapgridCenter
+  components:
+  - type: Transform
+    anchored: true
+  - type: Physics
+    bodyType: Static
+  - type: Sprite
+    sprite: Structures/Piping/Atmospherics/directionalfan.rsi
+    state: icon
+  - type: Fixtures
+    fixtures:
+      fix1:
+        shape:
+          !type:PhysShapeAabb
+            bounds: "-0.48,-0.48,0.48,-0.40"
+  - type: Airtight
+    noAirWhenFullyAirBlocked: false
+    airBlockedDirection:
+      - South
+  - type: Clickable
+  - type: Tag
+    tags:
+      - SpreaderIgnore

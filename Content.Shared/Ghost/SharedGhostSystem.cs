@@ -1,34 +1,59 @@
-using Content.Shared.DragDrop;
 using Content.Shared.Emoting;
+using Content.Shared.Hands;
 using Content.Shared.Interaction.Events;
 using Content.Shared.Item;
+using Content.Shared.Popups;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.Ghost
 {
     /// <summary>
-    /// System for the <see cref="SharedGhostComponent"/>.
-    /// Prevents ghosts from interacting when <see cref="SharedGhostComponent.CanGhostInteract"/> is false.
+    /// System for the <see cref="GhostComponent"/>.
+    /// Prevents ghosts from interacting when <see cref="GhostComponent.CanGhostInteract"/> is false.
     /// </summary>
     public abstract class SharedGhostSystem : EntitySystem
     {
+        [Dependency] protected readonly SharedPopupSystem Popup = default!;
+
         public override void Initialize()
         {
             base.Initialize();
-            SubscribeLocalEvent<SharedGhostComponent, UseAttemptEvent>(OnAttempt);
-            SubscribeLocalEvent<SharedGhostComponent, InteractionAttemptEvent>(OnAttempt);
-            SubscribeLocalEvent<SharedGhostComponent, EmoteAttemptEvent>(OnAttempt);
-            SubscribeLocalEvent<SharedGhostComponent, DropAttemptEvent>(OnAttempt);
-            SubscribeLocalEvent<SharedGhostComponent, PickupAttemptEvent>(OnAttempt);
+            SubscribeLocalEvent<GhostComponent, UseAttemptEvent>(OnAttempt);
+            SubscribeLocalEvent<GhostComponent, InteractionAttemptEvent>(OnAttemptInteract);
+            SubscribeLocalEvent<GhostComponent, EmoteAttemptEvent>(OnAttempt);
+            SubscribeLocalEvent<GhostComponent, DropAttemptEvent>(OnAttempt);
+            SubscribeLocalEvent<GhostComponent, PickupAttemptEvent>(OnAttempt);
         }
 
-        private void OnAttempt(EntityUid uid, SharedGhostComponent component, CancellableEntityEventArgs args)
+        private void OnAttemptInteract(Entity<GhostComponent> ent, ref InteractionAttemptEvent args)
+        {
+            if (!ent.Comp.CanGhostInteract)
+                args.Cancelled = true;
+        }
+
+        private void OnAttempt(EntityUid uid, GhostComponent component, CancellableEntityEventArgs args)
         {
             if (!component.CanGhostInteract)
                 args.Cancel();
         }
 
-        public void SetCanReturnToBody(SharedGhostComponent component, bool value)
+        public void SetTimeOfDeath(EntityUid uid, TimeSpan value, GhostComponent? component)
+        {
+            if (!Resolve(uid, ref component))
+                return;
+
+            component.TimeOfDeath = value;
+        }
+
+        public void SetCanReturnToBody(EntityUid uid, bool value, GhostComponent? component = null)
+        {
+            if (!Resolve(uid, ref component))
+                return;
+
+            component.CanReturnToBody = value;
+        }
+
+        public void SetCanReturnToBody(GhostComponent component, bool value)
         {
             component.CanReturnToBody = value;
         }
@@ -50,22 +75,24 @@ namespace Content.Shared.Ghost
     [Serializable, NetSerializable]
     public struct GhostWarp
     {
-        public GhostWarp(EntityUid entity, string displayName, bool isWarpPoint)
+        public GhostWarp(NetEntity entity, string displayName, bool isWarpPoint)
         {
             Entity = entity;
             DisplayName = displayName;
             IsWarpPoint = isWarpPoint;
         }
-        
+
         /// <summary>
         /// The entity representing the warp point.
         /// This is passed back to the server in <see cref="GhostWarpToTargetRequestEvent"/>
         /// </summary>
-        public EntityUid Entity { get; }
+        public NetEntity Entity { get; }
+
         /// <summary>
         /// The display name to be surfaced in the ghost warps menu
         /// </summary>
         public string DisplayName { get; }
+
         /// <summary>
         /// Whether this warp represents a warp point or a player
         /// </summary>
@@ -96,13 +123,19 @@ namespace Content.Shared.Ghost
     [Serializable, NetSerializable]
     public sealed class GhostWarpToTargetRequestEvent : EntityEventArgs
     {
-        public EntityUid Target { get; }
+        public NetEntity Target { get; }
 
-        public GhostWarpToTargetRequestEvent(EntityUid target)
+        public GhostWarpToTargetRequestEvent(NetEntity target)
         {
             Target = target;
         }
     }
+
+    /// <summary>
+    /// A client to server request for their ghost to be warped to the most followed entity.
+    /// </summary>
+    [Serializable, NetSerializable]
+    public sealed class GhostnadoRequestEvent : EntityEventArgs;
 
     /// <summary>
     /// A client to server request for their ghost to return to body

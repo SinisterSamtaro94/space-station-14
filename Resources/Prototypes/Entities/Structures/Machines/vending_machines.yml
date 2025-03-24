@@ -5,6 +5,10 @@
   description: Just add capitalism!
   abstract: true
   components:
+  - type: ActionGrant
+    actions:
+    - ActionVendingThrow
+  - type: StationAiWhitelist
   - type: AmbientOnPowered
   - type: AmbientSound
     volume: -9
@@ -14,7 +18,6 @@
       path: /Audio/Ambience/Objects/vending_machine_hum.ogg
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/empty.rsi
-    netsync: false
     snapCardinals: true
   - type: Physics
     bodyType: Static
@@ -22,14 +25,15 @@
     noRot: true
   - type: Fixtures
     fixtures:
-    - shape:
-        !type:PhysShapeAabb
-        bounds: "-0.25,-0.45,0.25,0.45"
-      mask:
-      - MachineMask
-      layer:
-      - MachineLayer
-      density: 200
+      fix1:
+        shape:
+          !type:PhysShapeAabb
+          bounds: "-0.25,-0.45,0.25,0.45"
+        mask:
+        - MachineMask
+        layer:
+        - MachineLayer
+        density: 200
   - type: Destructible
     thresholds:
     - trigger:
@@ -39,21 +43,48 @@
       - !type:DoActsBehavior
         acts: ["Breakage"]
       - !type:EjectVendorItems
+    - trigger:
+        !type:DamageTrigger
+        damage: 200
+      behaviors:
+      - !type:SpawnEntitiesBehavior
+        spawn:
+          SheetSteel1:
+            min: 1
+            max: 1
+      - !type:DoActsBehavior
+        acts: [ "Destruction" ]
+      - !type:PlaySoundBehavior
+        sound:
+          collection: MetalGlassBreak
+  - type: Repairable
+    doAfterDelay: 8
   - type: ActivatableUI
     key: enum.VendingMachineUiKey.Key
   - type: ActivatableUIRequiresPower
   - type: UserInterface
     interfaces:
-    - key: enum.VendingMachineUiKey.Key
-      type: VendingMachineBoundUserInterface
-    - key: enum.WiresUiKey.Key
-      type: WiresBoundUserInterface
+      enum.VendingMachineUiKey.Key:
+        type: VendingMachineBoundUserInterface
+      enum.WiresUiKey.Key:
+        type: WiresBoundUserInterface
+  - type: WiresPanel
   - type: Wires
-    BoardName: "Vending Machine"
-    LayoutId: Vending
+    boardName: wires-board-name-vendingmachine
+    layoutId: Vending
   - type: Anchorable
+  - type: TypingIndicator
+    proto: robot
   - type: Speech
+    speechVerb: Robotic
     speechSounds: Vending
+  - type: SpookySpeaker
+    messageSet: SpookySpeakerMessagesGeneric
+    speakChance: 0.2
+  - type: IntrinsicRadioReceiver
+  - type: ActiveRadio
+    channels:
+    - Common
   - type: DoAfter
   - type: Electrified
     enabled: false
@@ -65,19 +96,52 @@
   - type: LitOnPowered
   - type: ApcPowerReceiver
     powerLoad: 200
-    priority: Low
   - type: Actions
   - type: SentienceTarget
     flavorKind: station-event-random-sentience-flavor-mechanical
+    weight: 0.025 # fuck you in particular (it now needs 40 vending machines to be as likely as 1 interesting animal)
   - type: StaticPrice
-    price: 200
+    price: 100
   - type: Appearance
   - type: WiresVisuals
 
 - type: entity
   parent: VendingMachine
+  id: VendingMachineCondiments
+  name: condiment station
+  description: Slather these thick gooey substances on your food for a full flavor effect.
+  components:
+  - type: VendingMachine
+    pack: CondimentInventory
+    offState: off
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/condiments.rsi
+    drawdepth: SmallObjects
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+  - type: Fixtures
+    fixtures:
+      fix1:
+        shape:
+          !type:PhysShapeAabb
+          bounds: "-0.3,-0.16,0.3,0.40"
+        mask:
+        - MachineMask
+        layer:
+        - MachineLayer
+        density: 190
+  - type: Advertise
+    pack: CondimentVendAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
+  - type: Transform
+    noRot: false
+
+- type: entity
+  parent: VendingMachine
   id: VendingMachineAmmo
-  name: Liberation Station
+  name: liberation station
   description: An overwhelming amount of ancient patriotism washes over you just by looking at the machine.
   components:
   - type: VendingMachine
@@ -87,7 +151,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: AmmoVendAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/ammo.rsi
     layers:
@@ -114,7 +179,8 @@
     loopDeny: false
   - type: Advertise
     pack: BoozeOMatAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: BoozeOMatGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/boozeomat.rsi
     layers:
@@ -127,6 +193,44 @@
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
   - type: AccessReader
     access: [["Bar"]]
+  - type: GuideHelp
+    guides:
+    - Bartender
+    - Drinks
+
+- type: entity
+  parent: VendingMachineBooze
+  id: VendingMachineBoozeSyndicate # syndie booze-o-mat for nukie outpost
+  name: Bruise-O-Mat
+  description: A refurbished Booze-O-Mat for boosting operative morale. An imprint of a blood-red hardsuit is visible on one side, and the paint seems ashed off on the other side.
+  components:
+  - type: VendingMachine
+    pack: BoozeOMatInventory
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+    denyState: deny-unshaded
+    loopDeny: false
+  - type: Advertise
+    pack: BruiseOMatAds
+  - type: SpeakOnUIClosed
+    pack: BruiseOMatGoodbyes
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/bruiseomat.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: AccessReader
+    access: [["SyndicateAgent"]]
+  - type: GuideHelp
+    guides:
+    - Bartender
+    - Drinks
 
 - type: entity
   parent: VendingMachine
@@ -160,6 +264,39 @@
 
 - type: entity
   parent: VendingMachine
+  id: VendingMachineChefvend
+  name: ChefVend
+  description: An ingredient vendor for all your cheffin needs.
+  components:
+  - type: VendingMachine
+    pack: ChefvendInventory
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+    ejectState: eject-unshaded
+  - type: Advertise
+    pack: ChefvendAds
+  - type: SpeakOnUIClosed
+    pack: ChefvendGoodbyes
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/chefvend.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: AccessReader
+    access: [["Service"]]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#4b93ad"
+
+- type: entity
+  parent: VendingMachine
   id: VendingMachineCigs
   name: ShadyCigs Deluxe
   description: If you want to get cancer, might as well do it in style.
@@ -175,7 +312,8 @@
     denyState: deny-unshaded
   - type: Advertise
     pack: CigaretteMachineAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: CigaretteMachineGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/cigs.rsi
     layers:
@@ -201,10 +339,8 @@
     denyState: deny-unshaded
   - type: Advertise
     pack: ClothesMateAds
-  - type: Speech
-  - type: Tag
-    tags:
-      - DroneUsable
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/clothing.rsi
     layers:
@@ -215,6 +351,37 @@
       shader: unshaded
     - state: panel
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.8
+    energy: 1.6
+    color: "#3db83b"
+
+- type: entity
+  parent: VendingMachine
+  id: VendingMachineWinter
+  name: WinterDrobe
+  description: The best place to enjoy the cold!
+  components:
+  - type: VendingMachine
+    pack: WinterDrobeInventory
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+    denyState: deny-unshaded
+  - type: Advertise
+    pack: ClothesMateAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/winterdrobe.rsi
+    layers:
+    - state: "off"
+      map: [ "enum.VendingMachineVisualLayers.Base" ]
+    - state: "off"
+      map: [ "enum.VendingMachineVisualLayers.BaseUnshaded" ]
+      shader: unshaded
+    - state: panel
+      map: [ "enum.WiresVisualLayers.MaintenancePanel" ]
   - type: PointLight
     radius: 1.8
     energy: 1.6
@@ -238,9 +405,11 @@
     screenState: screen
     ejectDelay: 5
     soundVend: /Audio/Machines/machine_vend_hot_drink.ogg
+    initialStockQuality: 0.33
   - type: Advertise
     pack: HotDrinksMachineAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: HotDrinksMachineGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/coffee.rsi
     layers:
@@ -275,9 +444,11 @@
     ejectState: eject-unshaded
     denyState: deny-unshaded
     ejectDelay: 1.9
+    initialStockQuality: 0.33
   - type: Advertise
     pack: RobustSoftdrinksAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: RobustSoftdrinksGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/cola.rsi
     layers:
@@ -294,6 +465,257 @@
     color: "#3c5eb5"
 
 - type: entity
+  parent: VendingMachineCola
+  id: VendingMachineColaBlack
+  suffix: Black
+  components:
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/cola-black.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#423438"
+
+- type: entity
+  parent: VendingMachineCola
+  id: VendingMachineColaRed
+  name: Space Cola Vendor
+  description: It vends cola, in space.
+  components:
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/cola-red.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#A50824"
+
+- type: entity
+  parent: VendingMachineCola
+  id: VendingMachineSpaceUp
+  name: Space-Up! Vendor
+  description: Indulge in an explosion of flavor.
+  components:
+  - type: VendingMachine
+    pack: SpaceUpInventory
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/spaceup.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#44964A"
+
+- type: entity
+  parent: VendingMachineCola
+  id: VendingMachineSoda
+  suffix: Soda
+  components:
+  - type: VendingMachine
+    pack: SodaInventory
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/soda.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#CBC6BE"
+
+- type: entity
+  parent: VendingMachineCola
+  id: VendingMachineStarkist
+  name: Star-kist Vendor
+  description: The taste of a star in liquid form.
+  components:
+  - type: VendingMachine
+    pack: StarkistInventory
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/starkist.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#D3A44D"
+
+- type: entity
+  parent: VendingMachine
+  id: VendingMachineShamblersJuice
+  name: Shambler's Juice Vendor
+  description: ~Shake me up some of that Shambler's Juice!~
+  components:
+  - type: VendingMachine
+    pack: ShamblersJuiceInventory
+    dispenseOnHitChance: 0.25
+    dispenseOnHitThreshold: 2
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+    ejectState: eject-unshaded
+    denyState: deny-unshaded
+    ejectDelay: 1.9
+    initialStockQuality: 0.33
+  - type: Advertise
+    pack: RobustSoftdrinksAds
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/shamblersjuice.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#66538F"
+
+- type: entity
+  parent: VendingMachine
+  id: VendingMachinePwrGame
+  name: Pwr Game Vendor
+  description: You want it, we got it. Brought to you in partnership with Vlad's Salads.
+  components:
+  - type: VendingMachine
+    pack: PwrGameInventory
+    dispenseOnHitChance: 0.25
+    dispenseOnHitThreshold: 2
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+    ejectState: eject-unshaded
+    denyState: deny-unshaded
+    ejectDelay: 1.9
+    initialStockQuality: 0.33
+  - type: Advertise
+    pack: RobustSoftdrinksAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/pwrgame.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#6927C5"
+
+- type: entity
+  parent: VendingMachine
+  id: VendingMachineDrGibb
+  name: Dr. Gibb Vendor
+  description: Canned explosion of different flavors in this very vendor!
+  components:
+  - type: VendingMachine
+    pack: DrGibbInventory
+    dispenseOnHitChance: 0.25
+    dispenseOnHitThreshold: 2
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+    ejectState: eject-unshaded
+    denyState: deny-unshaded
+    ejectDelay: 1.9
+    initialStockQuality: 0.33
+  - type: Advertise
+    pack: DrGibbAds
+  - type: SpeakOnUIClosed
+    pack: DrGibbGoodbyes
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/gib.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#D82929"
+
+- type: entity
+  parent: VendingMachine
+  id: VendingMachineSmite
+  name: Smite Vendor
+  description: Popular with the administration.
+  components:
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/smite.rsi
+    layers:
+    - state: "off"
+      map: [ "enum.VendingMachineVisualLayers.Base" ]
+    - state: "off"
+      map: [ "enum.VendingMachineVisualLayers.BaseUnshaded" ]
+      shader: unshaded
+    - state: panel
+      map: [ "enum.WiresVisualLayers.MaintenancePanel" ]
+  - type: VendingMachine
+    pack: SmiteInventory
+    dispenseOnHitChance: 0.25
+    dispenseOnHitThreshold: 2
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+    ejectState: eject-unshaded
+    denyState: deny-unshaded
+    ejectDelay: 1.9
+    initialStockQuality: 0.33
+  - type: Advertise
+    pack: SmiteAds
+  - type: SpeakOnUIClosed
+    pack: SmiteGoodbyes
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#00E645"
+
+- type: entity
   parent: VendingMachine
   id: VendingMachineDinnerware
   name: Plasteel Chef's Dinnerware Vendor
@@ -307,6 +729,8 @@
     ejectState: eject-unshaded
   - type: Advertise
     pack: DinnerwareAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/dinnerware.rsi
     layers:
@@ -318,7 +742,7 @@
     - state: panel
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
   - type: AccessReader
-    access: [["Service"]]
+    access: [["Kitchen"]]
   - type: PointLight
     radius: 1.5
     energy: 1.6
@@ -337,6 +761,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: MagiVendAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/magivend.rsi
     layers:
@@ -365,9 +791,11 @@
     offState: off
     brokenState: broken
     normalState: normal-unshaded
+    initialStockQuality: 0.33
   - type: Advertise
     pack: DiscountDansAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: DiscountDansGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/discount.rsi
     layers:
@@ -429,6 +857,8 @@
     ejectDelay: 0.6
   - type: Advertise
     pack: NanoMedAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/medical.rsi
     layers:
@@ -445,6 +875,9 @@
     radius: 1.5
     energy: 1.6
     color: "#9dc5c9"
+  - type: GuideHelp
+    guides:
+    - Medical Doctor
 
 - type: entity
   parent: VendingMachine
@@ -461,6 +894,8 @@
     denyState: deny-unshaded
   - type: Advertise
     pack: NutriMaxAds
+  - type: SpeakOnUIClosed
+    pack: NutriMaxGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/nutri.rsi
     layers:
@@ -493,6 +928,8 @@
     denyState: deny-unshaded
   - type: Advertise
     pack: SecTechAds
+  - type: SpeakOnUIClosed
+    pack: SecTechGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/sec.rsi
     layers:
@@ -509,6 +946,10 @@
     radius: 1
     energy: 1.2
     color: "#78645c"
+  - type: GuideHelp
+    guides:
+    - Security
+    - Antagonists
 
 - type: entity
   parent: VendingMachine
@@ -526,6 +967,8 @@
     denyState: deny-unshaded
   - type: Advertise
     pack: MegaSeedAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/seeds.rsi
     layers:
@@ -544,45 +987,10 @@
 - type: entity
   parent: VendingMachineSeedsUnlocked
   id: VendingMachineSeeds
-  suffix: Hyroponics
+  suffix: Hydroponics
   components:
   - type: AccessReader
     access: [["Hydroponics"]]
-
-- type: entity
-  parent: VendingMachine
-  id: VendingMachineSmartFridge
-  name: SmartFridge
-  description: A refrigerated storage unit for keeping items cold and fresh.
-  components:
-  - type: VendingMachine
-    pack: SmartFridgeInventory
-    offState: off-real
-    brokenState: broken
-    normalState: off
-    denyState: deny-unshaded
-    screenState: normal-unshaded
-    loopDeny: false
-  - type: Advertise
-    pack: SmartFridgeAds
-  - type: Speech
-  - type: Sprite
-    sprite: Structures/Machines/VendingMachines/smartfridge.rsi
-    layers:
-    - state: off-real
-      map: ["enum.VendingMachineVisualLayers.Base"]
-    - state: off-real
-      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
-      shader: unshaded
-    - state: normal-unshaded
-      map: ["enum.VendingMachineVisualLayers.Screen"]
-      shader: unshaded
-    - state: panel
-      map: ["enum.WiresVisualLayers.MaintenancePanel"]
-  - type: PointLight
-    radius: 1.5
-    energy: 1.6
-    color: "#9dc5c9"
 
 - type: entity
   parent: VendingMachine
@@ -599,9 +1007,11 @@
     normalState: normal-unshaded
     ejectState: eject-unshaded
     denyState: deny-unshaded
+    initialStockQuality: 0.33
   - type: Advertise
     pack: GetmoreChocolateCorpAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: GetmoreChocolateCorpGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/snack.rsi
     layers:
@@ -618,6 +1028,116 @@
     color: "#c73434"
 
 - type: entity
+  parent: VendingMachineSnack
+  id: VendingMachineSustenance
+  name: Sustenance Vendor
+  description: A vending machine which vends food, as required by section 47-C of the NT's Prisoner Ethical Treatment Agreement.
+  components:
+  - type: VendingMachine
+    pack: SustenanceInventory
+    dispenseOnHitChance: 0.25
+    dispenseOnHitThreshold: 2
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+    ejectState: eject-unshaded
+    denyState: deny-unshaded
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/sustenance.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#737785"
+
+- type: entity
+  parent: VendingMachineSnack
+  id: VendingMachineSnackBlue
+  suffix: Blue
+  components:
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/snack-blue.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#3c5eb5"
+
+- type: entity
+  parent: VendingMachineSnack
+  id: VendingMachineSnackOrange
+  suffix: Orange
+  components:
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/snack-orange.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#CE3401"
+
+- type: entity
+  parent: VendingMachineSnack
+  id: VendingMachineSnackGreen
+  suffix: Green
+  components:
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/snack-green.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#5F6A1C"
+
+- type: entity
+  parent: VendingMachineSnack
+  id: VendingMachineSnackTeal
+  suffix: Teal
+  components:
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/snack-teal.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#207E79"
+
+- type: entity
   parent: VendingMachine
   id: VendingMachineSovietSoda
   name: BODA
@@ -632,9 +1152,11 @@
     normalState: normal-unshaded
     ejectState: eject-unshaded
     denyState: deny-unshaded
+    initialStockQuality: 0.33
   - type: Advertise
     pack: BodaAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: BodaGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/sovietsoda.rsi
     layers:
@@ -666,7 +1188,8 @@
     screenState: screen
   - type: Advertise
     pack: AutoDrobeAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/theater.rsi
     layers:
@@ -684,9 +1207,6 @@
     radius: 1.5
     energy: 1.6
     color: "#c73434"
-  - type: Tag
-    tags:
-      - DroneUsable
 
 - type: entity
   parent: VendingMachine
@@ -703,7 +1223,8 @@
     denyState: deny-unshaded
   - type: Advertise
     pack: VendomatAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/vendomat.rsi
     layers:
@@ -718,6 +1239,43 @@
     radius: 1.5
     energy: 1.6
     color: "#9dc5c9"
+
+- type: entity
+  parent: VendingMachine
+  id: VendingMachineRobotics
+  name: Robotech Deluxe
+  description: All the tools you need to create your own robot army.
+  components:
+  - type: VendingMachine
+    pack: RoboticsInventory
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+    ejectState: eject-unshaded
+    denyState: deny-unshaded
+  - type: Advertise
+    pack: VendomatAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/robotics.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: AccessReader
+    access: [["Research"]]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#B0ADA9"
+  - type: GuideHelp
+    guides:
+    - Robotics
 
 - type: entity
   parent: VendingMachine
@@ -746,9 +1304,6 @@
     radius: 1.5
     energy: 1.6
     color: "#d4ab33"
-  - type: Tag
-    tags:
-      - DroneUsable
 
 - type: entity
   parent: VendingMachine
@@ -762,9 +1317,11 @@
     brokenState: broken
     normalState: normal-unshaded
     ejectState: eject-unshaded
-    ejectdelay: 1.8
+    ejectDelay: 1.8
   - type: Advertise
     pack: GoodCleanFunAds
+  - type: SpeakOnUIClosed
+    pack: GoodCleanFunGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/games.rsi
     layers:
@@ -793,9 +1350,11 @@
     offState: off
     brokenState: broken
     normalState: normal-unshaded
+    initialStockQuality: 0.33
   - type: Advertise
     pack: ChangAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: ChangGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/changs.rsi
     layers:
@@ -814,8 +1373,8 @@
 - type: entity
   parent: VendingMachine
   id: VendingMachineSalvage
-  name: salvage vendor
-  description: A dwarves best friend!
+  name: Salvage Vendor
+  description: A dwarf's best friend!
   components:
   - type: VendingMachine
     pack: SalvageEquipmentInventory
@@ -836,9 +1395,12 @@
   - type: PointLight
     radius: 1.5
     energy: 1.6
-    color: "#9dc5c9"
+    color: "#b89f25"
   - type: AccessReader
     access: [["Salvage"]]
+  - type: GuideHelp
+    guides:
+    - Salvage
 
 - type: entity
   parent: VendingMachine
@@ -853,9 +1415,11 @@
     offState: off
     brokenState: broken
     normalState: normal-unshaded
+    initialStockQuality: 0.33
   - type: Advertise
     pack: DonutAds
-  - type: Speech
+  - type: SpeakOnUIClosed
+    pack: DonutGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/donut.rsi
     layers:
@@ -878,13 +1442,17 @@
   parent: VendingMachine
   name: vending machine
   abstract: true
+  placement:
+    mode: SnapgridCenter
+    snap:
+    - Wallmount
   components:
   - type: Sprite
     drawdepth: WallMountedItems
-    netsync: false
     snapCardinals: false
+  - type: Rotatable
   - type: WallMount
-    arc: 180
+    arc: 175
   - type: Transform
     noRot: false
 
@@ -910,8 +1478,15 @@
       shader: unshaded
     - texture: Structures/Machines/VendingMachines/maintenance_panel.png
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.3
+    energy: 1.6
+    color: "#43ccb5"
   - type: AccessReader
     access: [["Medical"]]
+  - type: GuideHelp
+    guides:
+    - Medical
 
 # job clothing
 
@@ -928,6 +1503,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: HyDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/hydrobe.rsi
     layers:
@@ -938,6 +1515,10 @@
       shader: unshaded
     - state: panel
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#326e3f"
   - type: AccessReader
     access: [["Hydroponics"]]
 
@@ -954,6 +1535,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: LawDrobeAds
+  - type: SpeakOnUIClosed
+    pack: LawDrobeGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/lawdrobe.rsi
     layers:
@@ -965,7 +1548,7 @@
     - state: panel
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
   - type: AccessReader
-    access: [["Brig"]]
+    access: [["Lawyer"]]
 
 - type: entity
   parent: VendingMachine
@@ -980,6 +1563,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: SecDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/secdrobe.rsi
     layers:
@@ -990,6 +1575,10 @@
       shader: unshaded
     - state: panel
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#d82929"
   - type: AccessReader
     access: [["Security"]]
 
@@ -1006,6 +1595,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: BarDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/bardrobe.rsi
     layers:
@@ -1060,6 +1651,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: CargoDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/cargodrobe.rsi
     layers:
@@ -1070,6 +1663,10 @@
       shader: unshaded
     - state: panel
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#b89e2a"
   - type: AccessReader
     access: [["Cargo"]]
 
@@ -1086,6 +1683,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: MediDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/medidrobe.rsi
     layers:
@@ -1112,6 +1711,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: ChemDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/chemdrobe.rsi
     layers:
@@ -1127,6 +1728,34 @@
 
 - type: entity
   parent: VendingMachine
+  id: VendingMachineCuraDrobe
+  name: CuraDrobe
+  description: A lowstock vendor only capable of vending clothing for curators and librarians.
+  components:
+  - type: VendingMachine
+    pack: CuraDrobeInventory
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+  - type: Advertise
+    pack: CuraDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/curadrobe.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: AccessReader
+    access: [["Service"]]
+
+- type: entity
+  parent: VendingMachine
   id: VendingMachineAtmosDrobe
   name: AtmosDrobe
   description: This relatively unknown vending machine delivers clothing for Atmospherics Technicians, an equally unknown job.
@@ -1138,6 +1767,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: AtmosDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/atmosdrobe.rsi
     layers:
@@ -1148,6 +1779,10 @@
       shader: unshaded
     - state: panel
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#b89e2a"
   - type: AccessReader
     access: [["Engineering"]]
 
@@ -1164,6 +1799,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: EngiDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/engidrobe.rsi
     layers:
@@ -1174,6 +1811,10 @@
       shader: unshaded
     - state: panel
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#b89e2a"
   - type: AccessReader
     access: [["Engineering"]]
 
@@ -1190,6 +1831,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: ChefDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/chefdrobe.rsi
     layers:
@@ -1216,6 +1859,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: DetDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/detdrobe.rsi
     layers:
@@ -1227,7 +1872,7 @@
     - state: panel
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
   - type: AccessReader
-    access: [["Security"]]
+    access: [["Detective"]]
 
 - type: entity
   parent: VendingMachine
@@ -1242,6 +1887,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: JaniDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/janidrobe.rsi
     layers:
@@ -1252,6 +1899,10 @@
       shader: unshaded
     - state: panel
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#6927C5"
   - type: AccessReader
     access: [["Janitor"]]
 
@@ -1268,6 +1919,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: SciDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/scidrobe.rsi
     layers:
@@ -1283,6 +1936,38 @@
 
 - type: entity
   parent: VendingMachine
+  id: VendingMachineSyndieDrobe
+  name: SyndieDrobe
+  description: Wardrobe machine encoded by the syndicate, contains elite outfits for various operations.
+  components:
+  - type: VendingMachine
+    pack: SyndieDrobeInventory
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+  - type: Advertise
+    pack: SyndieDrobeAds
+  - type: SpeakOnUIClosed
+    pack: SyndieDrobeGoodbyes
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/syndiedrobe.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#d82929"
+  - type: AccessReader
+    access: [["NuclearOperative"], ["SyndicateAgent"]]
+
+- type: entity
+  parent: VendingMachine
   id: VendingMachineRoboDrobe
   name: RoboDrobe
   description: A vending machine designed to dispense clothing known only to roboticists.
@@ -1294,6 +1979,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: RoboDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/robodrobe.rsi
     layers:
@@ -1320,6 +2007,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: GeneDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/genedrobe.rsi
     layers:
@@ -1346,6 +2035,8 @@
     normalState: normal-unshaded
   - type: Advertise
     pack: ViroDrobeAds
+  - type: SpeakOnUIClosed
+    pack: GenericVendGoodbyes
   - type: Sprite
     sprite: Structures/Machines/VendingMachines/virodrobe.rsi
     layers:
@@ -1358,6 +2049,105 @@
       map: ["enum.WiresVisualLayers.MaintenancePanel"]
   - type: AccessReader
     access: [["Medical"]]
+
+- type: entity
+  parent: VendingMachine
+  id: VendingMachineCentDrobe
+  name: CentDrobe
+  description: A one-of-a-kind vending machine for all your centcomm aesthetic needs!
+  components:
+  - type: VendingMachine
+    pack: CentDrobeInventory
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/centdrobe.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#48CF48"
+  - type: AccessReader
+    access: [["CentralCommand"]]
+
+- type: entity
+  parent: VendingMachine
+  id: VendingMachineHappyHonk
+  name: Happy Honk Dispenser
+  description: A happy honk meal box dispenser made by honk! co.
+  components:
+  - type: VendingMachine
+    pack: HappyHonkDispenserInventory
+    dispenseOnHitChance: 0.25
+    dispenseOnHitThreshold: 2
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+    denyState: deny-unshaded
+    ejectDelay: 1.9
+    soundVend: /Audio/Items/bikehorn.ogg
+    initialStockQuality: 1.0 # Nobody knows how Honk does it, but their vending machines always seem well-stocked...
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/happyhonk.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: PointLight
+    radius: 1.5
+    energy: 1.6
+    color: "#3c5eb5"
+  - type: Advertise
+    pack: HappyHonkAds
+  - type: SpeakOnUIClosed
+    pack: HappyHonkGoodbyes
+  - type: AccessReader
+    access: [["Kitchen"], ["Theatre"]]
+
+# Pride Vending Machine
+
+- type: entity
+  parent: VendingMachine
+  id: VendingMachinePride
+  name: Pride-O-Mat
+  description: A vending machine containing pride.
+  components:
+  - type: VendingMachine
+    pack: PrideDrobeInventory
+    offState: off
+    brokenState: broken
+    normalState: normal-unshaded
+  - type: Advertise
+    pack: PrideDrobeAds
+  - type: SpeakOnUIClosed
+    pack: PrideDrobeGoodbyes
+  - type: Speech
+  - type: PointLight
+    radius: 1.5
+    energy: 1.3 # reduced energy since the color is pure white
+    color: "#FFFFFF"
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/pride.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+      shader: unshaded
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
 
 # Gas Tank Dispenser
 
@@ -1388,3 +2178,49 @@
     layers:
     - state: dispenser
     - state: dispensereng
+
+- type: entity
+  parent: VendingMachine
+  id: VendingMachineChemicals
+  name: ChemVend
+  description: Probably not the coffee machine.
+  components:
+  - type: VendingMachine
+    pack: ChemVendInventory
+    offState: off
+    brokenState: broken
+    normalState: normal
+    denyState: deny
+    ejectDelay: 2
+  - type: Sprite
+    sprite: Structures/Machines/VendingMachines/chemvend.rsi
+    layers:
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.Base"]
+    - state: "off"
+      map: ["enum.VendingMachineVisualLayers.BaseUnshaded"]
+    - state: panel
+      map: ["enum.WiresVisualLayers.MaintenancePanel"]
+  - type: AccessReader
+    access: [["Chemistry"]]
+  - type: GuideHelp
+    guides:
+    - Chemicals
+    - Chemist
+
+- type: entity
+  parent: VendingMachineChemicals
+  id: VendingMachineChemicalsSyndicate
+  name: SyndieJuice
+  description: Not made with freshly squeezed syndies I hope.
+  components:
+  - type: VendingMachine
+    pack: ChemVendInventorySyndicate
+    offState: off
+    brokenState: broken
+    normalState: normal
+    denyState: deny
+    ejectDelay: 2
+  - type: AccessReader
+    access: [["SyndicateAgent"]]
+

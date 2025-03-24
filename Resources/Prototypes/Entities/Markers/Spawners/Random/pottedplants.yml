@@ -6,7 +6,8 @@
   - type: Sprite
     layers:
       - state: red
-      - texture: Structures/Furniture/potted_plants.rsi/random.png
+      - sprite: Structures/Furniture/potted_plants.rsi
+        state: random
   - type: RandomSpawner
     offset: 0
     prototypes:
@@ -34,6 +35,7 @@
       - PottedPlant22
       - PottedPlant23
       - PottedPlant24
+      - PottedPlant26
     chance: 1
 
 - type: entity
@@ -44,12 +46,13 @@
   - type: Sprite
     layers:
       - state: red
-      - texture: Structures/Furniture/potted_plants.rsi/plant-26.png
+      - sprite: Structures/Furniture/potted_plants.rsi
+        state: plant-27
   - type: RandomSpawner
     offset: 0
     prototypes:
-      - PottedPlant26
       - PottedPlant27
       - PottedPlant28
       - PottedPlant29
+      - PottedPlant30
     chance: 1

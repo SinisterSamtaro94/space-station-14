@@ -1,18 +1,21 @@
-using System.Linq;
-using Content.Shared.CardboardBox.Components;
 using Content.Server.Storage.Components;
 using Content.Server.Storage.EntitySystems;
+using Content.Shared.Access.Components;
 using Content.Shared.CardboardBox;
+using Content.Shared.CardboardBox.Components;
 using Content.Shared.Damage;
-using Content.Shared.Damage.Prototypes;
 using Content.Shared.Interaction;
 using Content.Shared.Movement.Components;
 using Content.Shared.Movement.Systems;
+using Content.Shared.Stealth;
+using Content.Shared.Stealth.Components;
+using Content.Shared.Storage.Components;
+using Robust.Server.GameObjects;
+using Robust.Shared.Audio;
+using Robust.Shared.Audio.Systems;
+using Robust.Shared.Containers;
 using Robust.Shared.Player;
 using Robust.Shared.Timing;
-using Content.Shared.Stealth.Components;
-using Content.Shared.Stealth;
-using Robust.Shared.Prototypes;
 
 namespace Content.Server.CardboardBox;
 
@@ -23,70 +26,77 @@ public sealed class CardboardBoxSystem : SharedCardboardBoxSystem
     [Dependency] private readonly IGameTiming _timing = default!;
     [Dependency] private readonly SharedStealthSystem _stealth = default!;
     [Dependency] private readonly DamageableSystem _damageable = default!;
-    [Dependency] private readonly IPrototypeManager _proto = default!;
     [Dependency] private readonly EntityStorageSystem _storage = default!;
 
     public override void Initialize()
     {
         base.Initialize();
-        SubscribeLocalEvent<CardboardBoxComponent, StorageBeforeCloseEvent>(OnBeforeStorageClosed);
         SubscribeLocalEvent<CardboardBoxComponent, StorageAfterOpenEvent>(AfterStorageOpen);
+        SubscribeLocalEvent<CardboardBoxComponent, StorageBeforeOpenEvent>(BeforeStorageOpen);
         SubscribeLocalEvent<CardboardBoxComponent, StorageAfterCloseEvent>(AfterStorageClosed);
-        SubscribeLocalEvent<CardboardBoxComponent, InteractedNoHandEvent>(OnNoHandInteracted);
+        SubscribeLocalEvent<CardboardBoxComponent, GetAdditionalAccessEvent>(OnGetAdditionalAccess);
+        SubscribeLocalEvent<CardboardBoxComponent, ActivateInWorldEvent>(OnInteracted);
+        SubscribeLocalEvent<CardboardBoxComponent, EntInsertedIntoContainerMessage>(OnEntInserted);
+        SubscribeLocalEvent<CardboardBoxComponent, EntRemovedFromContainerMessage>(OnEntRemoved);
 
         SubscribeLocalEvent<CardboardBoxComponent, DamageChangedEvent>(OnDamage);
     }
 
-    private void OnNoHandInteracted(EntityUid uid, CardboardBoxComponent component, InteractedNoHandEvent args)
+    private void OnInteracted(EntityUid uid, CardboardBoxComponent component, ActivateInWorldEvent args)
     {
-        //Free the mice please
-        if (!TryComp<EntityStorageComponent>(uid, out var box) || box.Open || !box.Contents.Contains(args.User))
+        if (args.Handled)
             return;
 
-        _storage.OpenStorage(uid);
-    }
+        if (!TryComp<EntityStorageComponent>(uid, out var box))
+            return;
 
-    private void OnBeforeStorageClosed(EntityUid uid, CardboardBoxComponent component, StorageBeforeCloseEvent args)
-    {
-        var mobMover = args.Contents.Where(HasComp<MobMoverComponent>).ToList();
-
-        //Grab the first mob to set as the mover and to prevent other mobs from entering.
-        foreach (var mover in mobMover)
+        if (!args.Complex)
         {
-            //Set the movement relay for the box as the first mob
-            if (component.Mover == null && args.Contents.Contains(mover))
-            {
-                var relay = EnsureComp<RelayInputMoverComponent>(mover);
-                _mover.SetRelay(mover, uid, relay);
-                component.Mover = mover;
-            }
+            if (box.Open || !box.Contents.Contains(args.User))
+                return;
+        }
 
-            if (mover != component.Mover)
-                args.Contents.Remove(mover);
+        args.Handled = true;
+        _storage.ToggleOpen(args.User, uid, box);
+
+        if (box.Contents.Contains(args.User) && !box.Open)
+        {
+            _mover.SetRelay(args.User, uid);
+            component.Mover = args.User;
         }
     }
 
-    private void AfterStorageOpen(EntityUid uid, CardboardBoxComponent component, StorageAfterOpenEvent args)
+    private void OnGetAdditionalAccess(EntityUid uid, CardboardBoxComponent component, ref GetAdditionalAccessEvent args)
     {
-        //Remove the mover after the box is opened and play the effect if it hasn't been played yet.
+        if (component.Mover == null)
+            return;
+        args.Entities.Add(component.Mover.Value);
+    }
+
+    private void BeforeStorageOpen(EntityUid uid, CardboardBoxComponent component, ref StorageBeforeOpenEvent args)
+    {
+        if (component.Quiet)
+            return;
+
+        //Play effect & sound
         if (component.Mover != null)
         {
-            RemComp<RelayInputMoverComponent>(component.Mover.Value);
             if (_timing.CurTime > component.EffectCooldown)
             {
-                RaiseNetworkEvent(new PlayBoxEffectMessage(component.Owner, component.Mover.Value), Filter.PvsExcept(component.Owner));
-                _audio.PlayPvs(component.EffectSound, component.Owner);
-                component.EffectCooldown = _timing.CurTime + CardboardBoxComponent.MaxEffectCooldown;
+                RaiseNetworkEvent(new PlayBoxEffectMessage(GetNetEntity(uid), GetNetEntity(component.Mover.Value)));
+                _audio.PlayPvs(component.EffectSound, uid);
+                component.EffectCooldown = _timing.CurTime + component.CooldownDuration;
             }
         }
+    }
 
-        component.Mover = null;
-
+    private void AfterStorageOpen(EntityUid uid, CardboardBoxComponent component, ref StorageAfterOpenEvent args)
+    {
         // If this box has a stealth/chameleon effect, disable the stealth effect while the box is open.
         _stealth.SetEnabled(uid, false);
     }
 
-    private void AfterStorageClosed(EntityUid uid, CardboardBoxComponent component, StorageAfterCloseEvent args)
+    private void AfterStorageClosed(EntityUid uid, CardboardBoxComponent component, ref StorageAfterCloseEvent args)
     {
         // If this box has a stealth/chameleon effect, enable the stealth effect.
         if (TryComp(uid, out StealthComponent? stealth))
@@ -103,5 +113,30 @@ public sealed class CardboardBoxSystem : SharedCardboardBoxSystem
         {
             _damageable.TryChangeDamage(component.Mover, args.DamageDelta, origin: args.Origin);
         }
+    }
+
+    private void OnEntInserted(EntityUid uid, CardboardBoxComponent component, EntInsertedIntoContainerMessage args)
+    {
+        if (!TryComp(args.Entity, out MobMoverComponent? mover))
+            return;
+
+        if (component.Mover == null)
+        {
+            _mover.SetRelay(args.Entity, uid);
+            component.Mover = args.Entity;
+        }
+    }
+
+    /// <summary>
+    /// Through e.g. teleporting, it's possible for the mover to exit the box without opening it.
+    /// Handle those situations but don't play the sound.
+    /// </summary>
+    private void OnEntRemoved(EntityUid uid, CardboardBoxComponent component, EntRemovedFromContainerMessage args)
+    {
+        if (args.Entity != component.Mover)
+            return;
+
+        RemComp<RelayInputMoverComponent>(component.Mover.Value);
+        component.Mover = null;
     }
 }

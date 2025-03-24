@@ -3,11 +3,12 @@ using Content.Server.EUI;
 using Content.Server.Explosion.EntitySystems;
 using Content.Shared.Administration;
 using Content.Shared.Explosion;
-using Robust.Server.Player;
 using Robust.Shared.Console;
 using Robust.Shared.Map;
 using Robust.Shared.Prototypes;
 using System.Linq;
+using System.Numerics;
+using Robust.Server.GameObjects;
 
 namespace Content.Server.Administration.Commands;
 
@@ -20,7 +21,7 @@ public sealed class OpenExplosionEui : IConsoleCommand
 
     public void Execute(IConsoleShell shell, string argStr, string[] args)
     {
-        var player = shell.Player as IPlayerSession;
+        var player = shell.Player;
         if (player == null)
         {
             shell.WriteError("This does not work from the server console.");
@@ -56,7 +57,7 @@ public sealed class ExplosionCommand : IConsoleCommand
             shell.WriteError($"Failed to parse intensity: {args[0]}");
             return;
         }
- 
+
         float slope = 5;
         if (args.Length > 1 && !float.TryParse(args[1], out slope))
         {
@@ -90,7 +91,7 @@ public sealed class ExplosionCommand : IConsoleCommand
                 shell.WriteError($"Failed to parse map ID: {args[5]}");
                 return;
             }
-            coords = new MapCoordinates((x, y), new(parsed));
+            coords = new MapCoordinates(new Vector2(x, y), new(parsed));
         }
         else
         {
@@ -103,9 +104,9 @@ public sealed class ExplosionCommand : IConsoleCommand
             }
 
             if (args.Length > 4)
-                coords = new MapCoordinates((x, y), xform.MapID);
+                coords = new MapCoordinates(new Vector2(x, y), xform.MapID);
             else
-                coords = xform.MapPosition;
+                coords = entMan.System<TransformSystem>().GetMapCoordinates(shell.Player.AttachedEntity.Value, xform: xform);
         }
 
         ExplosionPrototype? type;
@@ -118,7 +119,7 @@ public sealed class ExplosionCommand : IConsoleCommand
                 return;
             }
         }
-        else
+        else if (!protoMan.TryIndex(ExplosionSystem.DefaultExplosionPrototypeId, out type))
         {
             // no prototype was specified, so lets default to whichever one was defined first
             type = protoMan.EnumeratePrototypes<ExplosionPrototype>().FirstOrDefault();
@@ -131,6 +132,6 @@ public sealed class ExplosionCommand : IConsoleCommand
         }
 
         var sysMan = IoCManager.Resolve<IEntitySystemManager>();
-        sysMan.GetEntitySystem<ExplosionSystem>().QueueExplosion(coords, type.ID, intensity, slope, maxIntensity);
+        sysMan.GetEntitySystem<ExplosionSystem>().QueueExplosion(coords, type.ID, intensity, slope, maxIntensity, null);
     }
 }

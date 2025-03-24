@@ -1,13 +1,18 @@
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
+using Content.Server.Interaction;
 using Content.Shared.Access.Systems;
 using Content.Shared.ActionBlocker;
+using Content.Shared.Hands.Components;
+using Content.Shared.Interaction;
+using Content.Shared.Inventory;
+using JetBrains.Annotations;
 using Robust.Shared.Utility;
 
 namespace Content.Server.NPC;
 
 [DataDefinition]
-public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
+public sealed partial class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
 {
     /// <summary>
     /// Global defaults for NPCs
@@ -18,14 +23,18 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
         {"FollowCloseRange", 3f},
         {"FollowRange", 7f},
         {"IdleRange", 7f},
+        {"InteractRange", SharedInteractionSystem.InteractionRange},
         {"MaximumIdleTime", 7f},
         {MedibotInjectRange, 4f},
+        {MeleeMissChance, 0.3f},
         {"MeleeRange", 1f},
         {"MinimumIdleTime", 2f},
+        {"MovementRangeClose", 0.2f},
         {"MovementRange", 1.5f},
-        {"RangedRange", 7f},
-        {"RotateSpeed", MathF.PI},
-        {"VisionRadius", 7f},
+        {"RangedRange", 10f},
+        {"RotateSpeed", float.MaxValue},
+        {"VisionRadius", 10f},
+        {"AggroVisionRadius", 10f},
     };
 
     /// <summary>
@@ -41,6 +50,11 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
     /// </summary>
     public bool ReadOnly = false;
 
+    public void Clear()
+    {
+        _blackboard.Clear();
+    }
+
     public NPCBlackboard ShallowClone()
     {
         var dict = new NPCBlackboard();
@@ -51,6 +65,7 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
         return dict;
     }
 
+    [Pure]
     public bool ContainsKey(string key)
     {
         return _blackboard.ContainsKey(key);
@@ -59,6 +74,7 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
     /// <summary>
     /// Get the blackboard data for a particular key.
     /// </summary>
+    [Pure]
     public T GetValue<T>(string key)
     {
         return (T) _blackboard[key];
@@ -67,7 +83,8 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
     /// <summary>
     /// Tries to get the blackboard data for a particular key. Returns default if not found
     /// </summary>
-    public T? GetValueOrDefault<T>(string key, IEntityManager? entManager = null)
+    [Pure]
+    public T? GetValueOrDefault<T>(string key, IEntityManager entManager)
     {
         if (_blackboard.TryGetValue(key, out var value))
         {
@@ -90,7 +107,7 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
     /// <summary>
     /// Tries to get the blackboard data for a particular key.
     /// </summary>
-    public bool TryGetValue<T>(string key, [NotNullWhen(true)] out T? value, IEntityManager? entManager = null)
+    public bool TryGetValue<T>(string key, [NotNullWhen(true)] out T? value, IEntityManager entManager)
     {
         if (_blackboard.TryGetValue(key, out var data))
         {
@@ -130,17 +147,16 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
         DebugTools.Assert(false, $"Tried to write to an NPC blackboard that is readonly!");
     }
 
-    private bool TryGetEntityDefault(string key, [NotNullWhen(true)] out object? value, IEntityManager? entManager = null)
+    private bool TryGetEntityDefault(string key, [NotNullWhen(true)] out object? value, IEntityManager entManager)
     {
-        // TODO: Pass this in
-        IoCManager.Resolve(ref entManager);
         value = default;
         EntityUid owner;
 
         switch (key)
         {
             case Access:
-                if (!TryGetValue(Owner, out owner))
+            {
+                if (!TryGetValue(Owner, out owner, entManager))
                 {
                     return false;
                 }
@@ -148,8 +164,34 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
                 var access = entManager.EntitySysManager.GetEntitySystem<AccessReaderSystem>();
                 value = access.FindAccessTags(owner);
                 return true;
+            }
+            case ActiveHand:
+            {
+                if (!TryGetValue(Owner, out owner, entManager) ||
+                    !entManager.TryGetComponent<HandsComponent>(owner, out var hands) ||
+                    hands.ActiveHand == null)
+                {
+                    return false;
+                }
+
+                value = hands.ActiveHand;
+                return true;
+            }
+            case ActiveHandFree:
+            {
+                if (!TryGetValue(Owner, out owner, entManager) ||
+                    !entManager.TryGetComponent<HandsComponent>(owner, out var hands) ||
+                    hands.ActiveHand == null)
+                {
+                    return false;
+                }
+
+                value = hands.ActiveHand.IsEmpty;
+                return true;
+            }
             case CanMove:
-                if (!TryGetValue(Owner, out owner))
+            {
+                if (!TryGetValue(Owner, out owner, entManager))
                 {
                     return false;
                 }
@@ -157,8 +199,54 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
                 var blocker = entManager.EntitySysManager.GetEntitySystem<ActionBlockerSystem>();
                 value = blocker.CanMove(owner);
                 return true;
+            }
+            case FreeHands:
+            {
+                if (!TryGetValue(Owner, out owner, entManager) ||
+                    !entManager.TryGetComponent<HandsComponent>(owner, out var hands) ||
+                    hands.ActiveHand == null)
+                {
+                    return false;
+                }
+
+                var handos = new List<string>();
+
+                foreach (var (id, hand) in hands.Hands)
+                {
+                    if (!hand.IsEmpty)
+                        continue;
+
+                    handos.Add(id);
+                }
+
+                value = handos;
+                return true;
+            }
+            case Inventory:
+            {
+                if (!TryGetValue(Owner, out owner, entManager) ||
+                    !entManager.TryGetComponent<HandsComponent>(owner, out var hands) ||
+                    hands.ActiveHand == null)
+                {
+                    return false;
+                }
+
+                var handos = new List<string>();
+
+                foreach (var (id, hand) in hands.Hands)
+                {
+                    if (!hand.IsEmpty)
+                        continue;
+
+                    handos.Add(id);
+                }
+
+                value = handos;
+                return true;
+            }
             case OwnerCoordinates:
-                if (!TryGetValue(Owner, out owner))
+            {
+                if (!TryGetValue(Owner, out owner, entManager))
                 {
                     return false;
                 }
@@ -170,6 +258,7 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
                 }
 
                 return false;
+            }
             default:
                 return false;
         }
@@ -181,6 +270,13 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
         return _blackboard.Remove(key);
     }
 
+    public string GetVisionRadiusKey(IEntityManager entMan)
+    {
+        return TryGetValue<EntityUid>("Target", out _, entMan)
+            ? AggroVisionRadius
+            : VisionRadius;
+    }
+
     // I Ummd and Ahhd about using strings vs enums and decided on tags because
     // if a fork wants to do their own thing they don't need to touch the enum.
 
@@ -189,9 +285,16 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
     */
 
     public const string Access = "Access";
+    public const string ActiveHand = "ActiveHand";
+    public const string ActiveHandFree = "ActiveHandFree";
     public const string CanMove = "CanMove";
+    public const string FreeHands = "FreeHands";
     public const string FollowTarget = "FollowTarget";
+    public const string Inventory = "Inventory";
     public const string MedibotInjectRange = "MedibotInjectRange";
+
+    public const string MeleeMissChance = "MeleeMissChance";
+
     public const string Owner = "Owner";
     public const string OwnerCoordinates = "OwnerCoordinates";
     public const string MovementTarget = "MovementTarget";
@@ -212,13 +315,30 @@ public sealed class NPCBlackboard : IEnumerable<KeyValuePair<string, object>>
     public const string NavSmash = "NavSmash";
 
     /// <summary>
+    /// Can the NPC climb obstacles for steering.
+    /// </summary>
+    public const string NavClimb = "NavClimb";
+
+    /// <summary>
     /// Default key storage for a movement pathfind.
     /// </summary>
     public const string PathfindKey = "MovementPathfind";
 
     public const string RotateSpeed = "RotateSpeed";
-    public const string VisionRadius = "VisionRadius";
-    public const float MeleeRange = 1f;
+    public const string UtilityTarget = "UtilityTarget";
+
+    private const string VisionRadius = "VisionRadius";
+    private const string AggroVisionRadius = "AggroVisionRadius";
+
+    /// <summary>
+    /// A configurable "order" enum that can be given to an NPC from an external source.
+    /// </summary>
+    public const string CurrentOrders = "CurrentOrders";
+
+    /// <summary>
+    /// A configurable target that's ordered by external sources.
+    /// </summary>
+    public const string CurrentOrderedTarget = "CurrentOrderedTarget";
 
     public IEnumerator<KeyValuePair<string, object>> GetEnumerator()
     {

@@ -9,7 +9,8 @@
   - type: Sprite
     layers:
       - state: red
-      - texture: Objects/Consumable/Food/Baked/pie.rsi/plain-slice.png 
+      - sprite: Objects/Consumable/Food/Baked/pie.rsi
+        state: plain-slice
   - type: RandomSpawner
     prototypes:
       - FoodBreadPlainSlice
@@ -18,7 +19,15 @@
       - FoodBreadCreamcheeseSlice
       - FoodBreadMoldySlice
       - FoodBreadGarlicSlice
+      - FoodBreadCornSlice
+      - FoodBreadSausageSlice
       - FoodBreadButteredToast
+      - FoodBreadJellySlice
+      - FoodBreadFrenchToast
+      - FoodBreadTwoSlice
+      - FoodBreadVolcanicSlice
+      - FoodBreadTofuSlice
+      - FoodBreadBaguetteSlice
       - FoodCakeBlueberrySlice
       - FoodCakePlainSlice
       - FoodCakeCarrotSlice
@@ -37,14 +46,16 @@
       - FoodBakedMuffinBerry
       - FoodBakedMuffinCherry
       - FoodBakedMuffinBluecherry
+      - FoodBakedMuffinChocolate
+      - FoodBakedMuffinBanana
       - FoodBakedBunHoney
       - FoodBakedBunHotX
       - FoodBakedBunMeat
       - FoodBakedCookie
-      - FoodBakedCookieFortune
       - FoodBakedCookieOatmeal
       - FoodBakedCookieRaisin
       - FoodBakedCookieSugar
+      - FoodBakedGrilledCheeseSandwich
       - FoodBakedNugget
       - FoodBakedPancake
       - FoodBakedPancakeBb
@@ -63,6 +74,9 @@
       - FoodPieFrostySlice
       - FoodTartGrape
       - FoodTartCoco
+      - FoodBakedBrownie
+      - FoodPieBananaCreamSlice
+      - FoodTartMimeSlice
     chance: 0.8
     offset: 0.0
     #rare
@@ -75,4 +89,5 @@
       - FoodTartGapple
       - FoodBreadMeatXenoSlice
       - FoodPieXenoSlice
+      - FoodBakedCannabisBrownie
     rareChance: 0.05

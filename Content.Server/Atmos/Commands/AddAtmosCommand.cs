@@ -3,6 +3,7 @@ using Content.Server.Atmos.Components;
 using Content.Server.Atmos.EntitySystems;
 using Content.Shared.Administration;
 using Robust.Shared.Console;
+using Robust.Shared.Map.Components;
 
 namespace Content.Server.Atmos.Commands
 {
@@ -23,29 +24,27 @@ namespace Content.Server.Atmos.Commands
                 return;
             }
 
-            var entMan = IoCManager.Resolve<IEntityManager>();
-
-            if (!EntityUid.TryParse(args[0], out var euid))
+            if (!NetEntity.TryParse(args[0], out var eNet) || !_entities.TryGetEntity(eNet, out var euid))
             {
                 shell.WriteError($"Failed to parse euid '{args[0]}'.");
                 return;
             }
 
-            if (!entMan.HasComponent<MapGridComponent>(euid))
+            if (!_entities.HasComponent<MapGridComponent>(euid))
             {
                 shell.WriteError($"Euid '{euid}' does not exist or is not a grid.");
                 return;
             }
 
-            var atmos = entMan.EntitySysManager.GetEntitySystem<AtmosphereSystem>();
+            var atmos = _entities.EntitySysManager.GetEntitySystem<AtmosphereSystem>();
 
-            if (atmos.HasAtmosphere(euid))
+            if (atmos.HasAtmosphere(euid.Value))
             {
                 shell.WriteLine("Grid already has an atmosphere.");
                 return;
             }
 
-            _entities.AddComponent<GridAtmosphereComponent>(euid);
+            _entities.AddComponent<GridAtmosphereComponent>(euid.Value);
 
             shell.WriteLine($"Added atmosphere to grid {euid}.");
         }

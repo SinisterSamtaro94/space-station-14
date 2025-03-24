@@ -40,7 +40,22 @@
       "delays": [[1],[1],[1],[1]]
     },
     {
+      "name": "equipped-SUITSTORAGE-hamster",
+      "directions": 4,
+      "delays": [[1],[1],[1],[1]]
+    },
+    {
+      "name": "equipped-SUITSTORAGE-kangaroo",
+      "directions": 4,
+      "delays": [[1],[1],[1],[1]]
+    },
+    {
       "name": "equipped-SUITSTORAGE-possum",
+      "directions": 4,
+      "delays": [[1],[1],[1],[1]]
+    },
+    {
+      "name": "equipped-SUITSTORAGE-pig",
       "directions": 4,
       "delays": [[1],[1],[1],[1]]
     },
@@ -50,6 +65,10 @@
     },
     {
       "name": "inhand-right",
+      "directions": 4
+    },
+    {
+      "name": "equipped-SUITSTORAGE",
       "directions": 4
     }
   ]

@@ -5,11 +5,11 @@ namespace Content.Shared.Damage.Prototypes;
 /// <summary>
 ///     Prototype for examinable damage messages.
 /// </summary>
-[Prototype("examinableDamage")]
-public sealed class ExaminableDamagePrototype : IPrototype
+[Prototype]
+public sealed partial class ExaminableDamagePrototype : IPrototype
 {
-    [IdDataFieldAttribute]
-    public string ID { get; } = default!;
+    [IdDataField]
+    public string ID { get; private set; } = default!;
 
     /// <summary>
     ///     List of damage messages IDs sorted by severity.

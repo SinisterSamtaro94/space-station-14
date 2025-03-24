@@ -3,14 +3,15 @@ using Content.Shared.Cuffs.Components;
 using Content.Shared.Ensnaring.Components;
 using Content.Shared.Hands;
 using Content.Shared.Inventory.Events;
-using Robust.Client.GameObjects;
+using Content.Shared.Strip;
+using Content.Shared.Strip.Components;
 
 namespace Content.Client.Strip;
 
 /// <summary>
-///     This is the client-side stripping system, which just triggers UI updates on events. 
+///     This is the client-side stripping system, which just triggers UI updates on events.
 /// </summary>
-public sealed class StrippableSystem : EntitySystem
+public sealed class StrippableSystem : SharedStrippableSystem
 {
     public override void Initialize()
     {
@@ -31,10 +32,10 @@ public sealed class StrippableSystem : EntitySystem
 
     public void UpdateUi(EntityUid uid, StrippableComponent? component = null, EntityEventArgs? args = null)
     {
-        if (!TryComp(uid, out ClientUserInterfaceComponent? uiComp))
+        if (!TryComp(uid, out UserInterfaceComponent? uiComp))
             return;
 
-        foreach (var ui in uiComp.Interfaces)
+        foreach (var ui in uiComp.ClientOpenInterfaces.Values)
         {
             if (ui is StrippableBoundUserInterface stripUi)
                 stripUi.DirtyMenu();

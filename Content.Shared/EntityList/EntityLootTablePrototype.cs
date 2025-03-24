@@ -5,17 +5,17 @@ using Robust.Shared.Random;
 
 namespace Content.Shared.EntityList;
 
-[Prototype("entityLootTable")]
-public sealed class EntityLootTablePrototype : IPrototype
+[Prototype]
+public sealed partial class EntityLootTablePrototype : IPrototype
 {
     [IdDataField]
-    public string ID { get; } = default!;
+    public string ID { get; private set; } = default!;
 
     [DataField("entries")]
     public ImmutableList<EntitySpawnEntry> Entries = ImmutableList<EntitySpawnEntry>.Empty;
 
     /// <inheritdoc cref="EntitySpawnCollection.GetSpawns"/>
-    public List<string?> GetSpawns(IRobustRandom? random = null)
+    public List<string> GetSpawns(IRobustRandom random)
     {
         return EntitySpawnCollection.GetSpawns(Entries, random);
     }

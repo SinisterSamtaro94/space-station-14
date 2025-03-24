@@ -1,5 +1,7 @@
+using System.Numerics;
 using Content.Shared.Atmos;
 using Robust.Shared.Map;
+using Robust.Shared.Map.Components;
 using static Content.Server.Explosion.EntitySystems.ExplosionSystem;
 
 namespace Content.Server.Explosion.EntitySystems;
@@ -9,10 +11,10 @@ namespace Content.Server.Explosion.EntitySystems;
 /// </summary>
 public sealed class ExplosionGridTileFlood : ExplosionTileFlood
 {
-    public IMapGrid Grid;
+    public MapGridComponent Grid;
     private bool _needToTransform = false;
 
-    private Matrix3 _matrix = Matrix3.Identity;
+    private Matrix3x2 _matrix = Matrix3x2.Identity;
     private Vector2 _offset;
 
     // Tiles which neighbor an exploding tile, but have not yet had the explosion spread to them due to an
@@ -35,14 +37,14 @@ public sealed class ExplosionGridTileFlood : ExplosionTileFlood
     private Dictionary<Vector2i, NeighborFlag> _edgeTiles;
 
     public ExplosionGridTileFlood(
-        IMapGrid grid,
+        MapGridComponent grid,
         Dictionary<Vector2i, TileData> airtightMap,
         float maxIntensity,
         float intensityStepSize,
         int typeIndex,
         Dictionary<Vector2i, NeighborFlag> edgeTiles,
         EntityUid? referenceGrid,
-        Matrix3 spaceMatrix,
+        Matrix3x2 spaceMatrix,
         Angle spaceAngle)
     {
         Grid = grid;
@@ -63,18 +65,23 @@ public sealed class ExplosionGridTileFlood : ExplosionTileFlood
             }
         }
 
-        if (referenceGrid == Grid.GridEntityId)
+        if (referenceGrid == Grid.Owner)
             return;
 
         _needToTransform = true;
-        var transform = IoCManager.Resolve<IEntityManager>().GetComponent<TransformComponent>(Grid.GridEntityId);
-        var size = (float) Grid.TileSize;
+        var entityManager = IoCManager.Resolve<IEntityManager>();
 
-        _matrix.R0C2 = size / 2;
-        _matrix.R1C2 = size / 2;
-        _matrix *= transform.WorldMatrix * Matrix3.Invert(spaceMatrix);
-        var relativeAngle = transform.WorldRotation - spaceAngle;
-        _offset = relativeAngle.RotateVec((size / 4, size / 4));
+        var transformSystem = entityManager.System<SharedTransformSystem>();
+        var transform = entityManager.GetComponent<TransformComponent>(Grid.Owner);
+        var size = (float)Grid.TileSize;
+
+        _matrix.M31 = size / 2;
+        _matrix.M32 = size / 2;
+        Matrix3x2.Invert(spaceMatrix, out var invSpace);
+        var (_, relativeAngle, worldMatrix) = transformSystem.GetWorldPositionRotationMatrix(transform);
+        relativeAngle -= spaceAngle;
+        _matrix *= worldMatrix * invSpace;
+        _offset = relativeAngle.RotateVec(new Vector2(size / 4, size / 4));
     }
 
     public override void InitTile(Vector2i initialTile)
@@ -179,7 +186,7 @@ public sealed class ExplosionGridTileFlood : ExplosionTileFlood
             if (EnteredBlockedTiles.Contains(tile))
                 return;
 
-            // Did the explosion already attempt to enter this tile from some other direction? 
+            // Did the explosion already attempt to enter this tile from some other direction?
             if (!UnenteredBlockedTiles.Add(tile))
                 return;
 
@@ -203,7 +210,7 @@ public sealed class ExplosionGridTileFlood : ExplosionTileFlood
         if (!EnteredBlockedTiles.Add(tile))
             return;
 
-        // Did the explosion already attempt to enter this tile from some other direction? 
+        // Did the explosion already attempt to enter this tile from some other direction?
         if (UnenteredBlockedTiles.Contains(tile))
         {
             NewFreedTiles.Add(tile);
@@ -226,7 +233,7 @@ public sealed class ExplosionGridTileFlood : ExplosionTileFlood
             return;
         }
 
-        var center = _matrix.Transform(tile);
+        var center = Vector2.Transform(tile, _matrix);
         SpaceJump.Add(new((int) MathF.Floor(center.X + _offset.X), (int) MathF.Floor(center.Y + _offset.Y)));
         SpaceJump.Add(new((int) MathF.Floor(center.X - _offset.Y), (int) MathF.Floor(center.Y + _offset.X)));
         SpaceJump.Add(new((int) MathF.Floor(center.X - _offset.X), (int) MathF.Floor(center.Y - _offset.Y)));
@@ -269,7 +276,7 @@ public sealed class ExplosionGridTileFlood : ExplosionTileFlood
                 var direction = (AtmosDirection) (1 << i);
                 if (ignoreTileBlockers || !blockedDirections.IsFlagSet(direction))
                 {
-                    ProcessNewTile(iteration, tile.Offset(direction), direction.GetOpposite());
+                    ProcessNewTile(iteration, tile.Offset(direction), i.ToOppositeDir());
                 }
             }
 
@@ -298,7 +305,7 @@ public sealed class ExplosionGridTileFlood : ExplosionTileFlood
                 var direction = (AtmosDirection) (1 << i);
                 if (blockedDirections.IsFlagSet(direction))
                 {
-                    list.Add((tile.Offset(direction), direction.GetOpposite()));
+                    list.Add((tile.Offset(direction), i.ToOppositeDir()));
                 }
             }
         }

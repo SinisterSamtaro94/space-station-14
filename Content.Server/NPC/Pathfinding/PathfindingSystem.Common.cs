@@ -1,4 +1,8 @@
+using Content.Shared.Gravity;
+using Content.Shared.Maps;
 using Content.Shared.NPC;
+using Robust.Shared.Map.Components;
+using Robust.Shared.Spawners;
 
 namespace Content.Server.NPC.Pathfinding;
 
@@ -11,7 +15,7 @@ public sealed partial class PathfindingSystem
     /// <summary>
     /// Maximum amount of nodes we're allowed to expand.
     /// </summary>
-    private const int NodeLimit = 200;
+    private const int NodeLimit = 512;
 
     private sealed class PathComparer : IComparer<ValueTuple<float, PathPoly>>
     {
@@ -23,7 +27,7 @@ public sealed partial class PathfindingSystem
 
     private static readonly PathComparer PathPolyComparer = new();
 
-    private Queue<PathPoly> ReconstructPath(Dictionary<PathPoly, PathPoly> path, PathPoly currentNodeRef)
+    private List<PathPoly> ReconstructPath(Dictionary<PathPoly, PathPoly> path, PathPoly currentNodeRef)
     {
         var running = new List<PathPoly> { currentNodeRef };
         while (path.ContainsKey(currentNodeRef))
@@ -34,10 +38,8 @@ public sealed partial class PathfindingSystem
             running.Add(currentNodeRef);
         }
 
-        running = Simplify(running);
         running.Reverse();
-        var result = new Queue<PathPoly>(running);
-        return result;
+        return running;
     }
 
     private float GetTileCost(PathRequest request, PathPoly start, PathPoly end)
@@ -55,6 +57,7 @@ public sealed partial class PathfindingSystem
         {
             var isDoor = (end.Data.Flags & PathfindingBreadcrumbFlag.Door) != 0x0;
             var isAccess = (end.Data.Flags & PathfindingBreadcrumbFlag.Access) != 0x0;
+            var isClimb = (end.Data.Flags & PathfindingBreadcrumbFlag.Climb) != 0x0;
 
             // TODO: Handling power + door prying
             // Door we should be able to open
@@ -70,6 +73,10 @@ public sealed partial class PathfindingSystem
             else if ((request.Flags & PathFlags.Smashing) != 0x0 && end.Data.Damage > 0f)
             {
                 modifier += 10f + end.Data.Damage / 100f;
+            }
+            else if (isClimb && (request.Flags & PathFlags.Climbing) != 0x0)
+            {
+                modifier += 0.5f;
             }
             else
             {

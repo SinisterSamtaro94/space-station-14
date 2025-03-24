@@ -1,59 +1,55 @@
 using Content.Server.Body.Components;
-using Content.Server.DoAfter;
 using Content.Server.Medical.Components;
+using Content.Server.Medical.Stethoscope.Components;
 using Content.Server.Popups;
 using Content.Shared.Actions;
-using Content.Shared.Clothing.Components;
+using Content.Shared.Clothing;
 using Content.Shared.Damage;
+using Content.Shared.DoAfter;
 using Content.Shared.FixedPoint;
-using Content.Shared.Inventory.Events;
-using Content.Shared.MobState.Components;
+using Content.Shared.Medical;
+using Content.Shared.Medical.Stethoscope;
+using Content.Shared.Mobs.Components;
+using Content.Shared.Mobs.Systems;
 using Content.Shared.Verbs;
-using Robust.Shared.Player;
-using System.Threading;
+using Robust.Shared.Utility;
 
-namespace Content.Server.Medical
+namespace Content.Server.Medical.Stethoscope
 {
     public sealed class StethoscopeSystem : EntitySystem
     {
         [Dependency] private readonly PopupSystem _popupSystem = default!;
-        [Dependency] private readonly DoAfterSystem _doAfterSystem = default!;
+        [Dependency] private readonly SharedDoAfterSystem _doAfterSystem = default!;
+        [Dependency] private readonly MobStateSystem _mobStateSystem = default!;
 
         public override void Initialize()
         {
             base.Initialize();
-            SubscribeLocalEvent<StethoscopeComponent, GotEquippedEvent>(OnEquipped);
-            SubscribeLocalEvent<StethoscopeComponent, GotUnequippedEvent>(OnUnequipped);
+            SubscribeLocalEvent<StethoscopeComponent, ClothingGotEquippedEvent>(OnEquipped);
+            SubscribeLocalEvent<StethoscopeComponent, ClothingGotUnequippedEvent>(OnUnequipped);
             SubscribeLocalEvent<WearingStethoscopeComponent, GetVerbsEvent<InnateVerb>>(AddStethoscopeVerb);
             SubscribeLocalEvent<StethoscopeComponent, GetItemActionsEvent>(OnGetActions);
             SubscribeLocalEvent<StethoscopeComponent, StethoscopeActionEvent>(OnStethoscopeAction);
-            SubscribeLocalEvent<ListenSuccessfulEvent>(OnListenSuccess);
-            SubscribeLocalEvent<ListenCancelledEvent>(OnListenCancelled);
+            SubscribeLocalEvent<StethoscopeComponent, StethoscopeDoAfterEvent>(OnDoAfter);
         }
 
         /// <summary>
         /// Add the component the verb event subs to if the equippee is wearing the stethoscope.
         /// </summary>
-        private void OnEquipped(EntityUid uid, StethoscopeComponent component, GotEquippedEvent args)
+        private void OnEquipped(EntityUid uid, StethoscopeComponent component, ref ClothingGotEquippedEvent args)
         {
-            if (!TryComp<ClothingComponent>(uid, out var clothing))
-                return;
-            // Is the clothing in its actual slot?
-            if (!clothing.Slots.HasFlag(args.SlotFlags))
-                return;
-
             component.IsActive = true;
 
-            var wearingComp = EnsureComp<WearingStethoscopeComponent>(args.Equipee);
+            var wearingComp = EnsureComp<WearingStethoscopeComponent>(args.Wearer);
             wearingComp.Stethoscope = uid;
         }
 
-        private void OnUnequipped(EntityUid uid, StethoscopeComponent component, GotUnequippedEvent args)
+        private void OnUnequipped(EntityUid uid, StethoscopeComponent component, ref ClothingGotUnequippedEvent args)
         {
             if (!component.IsActive)
                 return;
 
-            RemComp<WearingStethoscopeComponent>(args.Equipee);
+            RemComp<WearingStethoscopeComponent>(args.Wearer);
             component.IsActive = false;
         }
 
@@ -79,10 +75,10 @@ namespace Content.Server.Medical
             {
                 Act = () =>
                 {
-                    StartListening(uid, args.Target, stetho); // start doafter
+                    StartListening(component.Stethoscope, uid, args.Target, stetho); // start doafter
                 },
                 Text = Loc.GetString("stethoscope-verb"),
-                IconTexture = "Clothing/Neck/Misc/stethoscope.rsi/icon.png",
+                Icon = new SpriteSpecifier.Rsi(new ("Clothing/Neck/Misc/stethoscope.rsi"), "icon"),
                 Priority = 2
             };
             args.Verbs.Add(verb);
@@ -91,40 +87,30 @@ namespace Content.Server.Medical
 
         private void OnStethoscopeAction(EntityUid uid, StethoscopeComponent component, StethoscopeActionEvent args)
         {
-            StartListening(args.Performer, args.Target, component);
+            StartListening(uid, args.Performer, args.Target, component);
         }
 
         private void OnGetActions(EntityUid uid, StethoscopeComponent component, GetItemActionsEvent args)
         {
-            args.Actions.Add(component.Action);
+            args.AddAction(ref component.ActionEntity, component.Action);
         }
 
-        // doafter succeeded / failed
-        private void OnListenSuccess(ListenSuccessfulEvent ev)
-        {
-            ev.Component.CancelToken = null;
-            ExamineWithStethoscope(ev.User, ev.Target);
-        }
-
-        private void OnListenCancelled(ListenCancelledEvent ev)
-        {
-            if (ev.Component == null)
-                return;
-            ev.Component.CancelToken = null;
-        }
         // construct the doafter and start it
-        private void StartListening(EntityUid user, EntityUid target, StethoscopeComponent comp)
+        private void StartListening(EntityUid scope, EntityUid user, EntityUid target, StethoscopeComponent comp)
         {
-            comp.CancelToken = new CancellationTokenSource();
-            _doAfterSystem.DoAfter(new DoAfterEventArgs(user, comp.Delay, comp.CancelToken.Token, target: target)
+            _doAfterSystem.TryStartDoAfter(new DoAfterArgs(EntityManager, user, comp.Delay, new StethoscopeDoAfterEvent(), scope, target: target, used: scope)
             {
-                BroadcastFinishedEvent = new ListenSuccessfulEvent(user, target, comp),
-                BroadcastCancelledEvent = new ListenCancelledEvent(user, comp),
-                BreakOnTargetMove = true,
-                BreakOnUserMove = true,
-                BreakOnStun = true,
-                NeedHand = true
+                NeedHand = true,
+                BreakOnMove = true,
             });
+        }
+
+        private void OnDoAfter(EntityUid uid, StethoscopeComponent component, DoAfterEvent args)
+        {
+            if (args.Handled || args.Cancelled || args.Args.Target == null)
+                return;
+
+            ExamineWithStethoscope(args.Args.User, args.Args.Target.Value);
         }
 
         /// <summary>
@@ -134,10 +120,10 @@ namespace Content.Server.Medical
         /// </summary>
         public void ExamineWithStethoscope(EntityUid user, EntityUid target)
         {
-            /// The mob check seems a bit redundant but (1) they could conceivably have lost it since when the doafter started and (2) I need it for .IsDead()
-            if (!HasComp<RespiratorComponent>(target) || !TryComp<MobStateComponent>(target, out var mobState) || mobState.IsDead())
+            // The mob check seems a bit redundant but (1) they could conceivably have lost it since when the doafter started and (2) I need it for .IsDead()
+            if (!HasComp<RespiratorComponent>(target) || !TryComp<MobStateComponent>(target, out var mobState) || _mobStateSystem.IsDead(target, mobState))
             {
-                _popupSystem.PopupEntity(Loc.GetString("stethoscope-dead"), target, Filter.Entities(user));
+                _popupSystem.PopupEntity(Loc.GetString("stethoscope-dead"), target, user);
                 return;
             }
 
@@ -149,7 +135,7 @@ namespace Content.Server.Medical
 
             var message = GetDamageMessage(value);
 
-            _popupSystem.PopupEntity(Loc.GetString(message), target, Filter.Entities(user));
+            _popupSystem.PopupEntity(Loc.GetString(message), target, user);
         }
 
         private string GetDamageMessage(FixedPoint2 totalOxyloss)
@@ -163,35 +149,5 @@ namespace Content.Server.Medical
             };
             return msg;
         }
-
-        // events for the doafter
-        private sealed class ListenSuccessfulEvent : EntityEventArgs
-        {
-            public EntityUid User;
-            public EntityUid Target;
-            public StethoscopeComponent Component;
-
-            public ListenSuccessfulEvent(EntityUid user, EntityUid target, StethoscopeComponent component)
-            {
-                User = user;
-                Target = target;
-                Component = component;
-            }
-        }
-
-        private sealed class ListenCancelledEvent : EntityEventArgs
-        {
-            public EntityUid Uid;
-            public StethoscopeComponent Component;
-
-            public ListenCancelledEvent(EntityUid uid, StethoscopeComponent component)
-            {
-                Uid = uid;
-                Component = component;
-            }
-        }
-
     }
-
-    public sealed class StethoscopeActionEvent : EntityTargetActionEvent {}
 }

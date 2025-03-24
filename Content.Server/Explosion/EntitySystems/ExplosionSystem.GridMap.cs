@@ -1,12 +1,18 @@
+using System.Numerics;
 using Content.Shared.Atmos;
+using Content.Shared.Explosion;
+using Content.Shared.Explosion.Components;
+using Content.Shared.Explosion.EntitySystems;
 using Robust.Shared.Map;
+using Robust.Shared.Map.Components;
+
 namespace Content.Server.Explosion.EntitySystems;
 
 // This partial part of the explosion system has all of the functions used to facilitate explosions moving across grids.
 // A good portion of it is focused around keeping track of what tile-indices on a grid correspond to tiles that border
 // space. AFAIK no other system currently needs to track these "edge-tiles". If they do, this should probably be a
 // property of the grid itself?
-public sealed partial class ExplosionSystem : EntitySystem
+public sealed partial class ExplosionSystem
 {
     /// <summary>
     ///     Set of tiles of each grid that are directly adjacent to space, along with the directions that face space.
@@ -18,12 +24,12 @@ public sealed partial class ExplosionSystem : EntitySystem
     /// </summary>
     private void OnGridStartup(GridStartupEvent ev)
     {
-        var grid = _mapManager.GetGrid(ev.EntityUid);
+        var grid = Comp<MapGridComponent>(ev.EntityUid);
 
         Dictionary<Vector2i, NeighborFlag> edges = new();
         _gridEdges[ev.EntityUid] = edges;
 
-        foreach (var tileRef in grid.GetAllTiles())
+        foreach (var tileRef in _map.GetAllTiles(ev.EntityUid, grid))
         {
             if (IsEdge(grid, tileRef.GridIndices, out var dir))
                 edges.Add(tileRef.GridIndices, dir);
@@ -34,6 +40,13 @@ public sealed partial class ExplosionSystem : EntitySystem
     {
         _airtightMap.Remove(ev.EntityUid);
         _gridEdges.Remove(ev.EntityUid);
+
+        // this should be a small enough set that iterating all of them is fine
+        var query = EntityQueryEnumerator<ExplosionVisualsComponent>();
+        while (query.MoveNext(out var visuals))
+        {
+            visuals.Tiles.Remove(ev.EntityUid);
+        }
     }
 
     /// <summary>
@@ -48,7 +61,7 @@ public sealed partial class ExplosionSystem : EntitySystem
     {
         Dictionary<Vector2i, BlockedSpaceTile> transformedEdges = new();
 
-        var targetMatrix = Matrix3.Identity;
+        var targetMatrix = Matrix3x2.Identity;
         Angle targetAngle = new();
         var tileSize = DefaultTileSize;
         var maxDistanceSq = (int) (maxDistance * maxDistance);
@@ -56,16 +69,15 @@ public sealed partial class ExplosionSystem : EntitySystem
         // if the explosion is centered on some grid (and not just space), get the transforms.
         if (referenceGrid != null)
         {
-            var targetGrid = _mapManager.GetGrid(referenceGrid.Value);
-            var xform = Transform(targetGrid.GridEntityId);
-            targetAngle = xform.WorldRotation;
-            targetMatrix = xform.InvWorldMatrix;
+            var targetGrid = Comp<MapGridComponent>(referenceGrid.Value);
+            var xform = Transform(referenceGrid.Value);
+            (_, targetAngle, targetMatrix) = _transformSystem.GetWorldPositionRotationInvMatrix(xform);
             tileSize = targetGrid.TileSize;
         }
 
-        var offsetMatrix = Matrix3.Identity;
-        offsetMatrix.R0C2 = tileSize / 2f;
-        offsetMatrix.R1C2 = tileSize / 2f;
+        var offsetMatrix = Matrix3x2.Identity;
+        offsetMatrix.M31 = tileSize / 2f;
+        offsetMatrix.M32 = tileSize / 2f;
 
         // Here we can end up with a triple nested for loop:
         // foreach other grid
@@ -81,24 +93,24 @@ public sealed partial class ExplosionSystem : EntitySystem
             if (!_gridEdges.TryGetValue(gridToTransform, out var edges))
                 continue;
 
-            if (!_mapManager.TryGetGrid(gridToTransform, out var grid))
+            if (!TryComp(gridToTransform, out MapGridComponent? grid))
                 continue;
 
             if (grid.TileSize != tileSize)
             {
-                Logger.Error($"Explosions do not support grids with different grid sizes. GridIds: {gridToTransform} and {referenceGrid}");
+                Log.Error($"Explosions do not support grids with different grid sizes. GridIds: {gridToTransform} and {referenceGrid}");
                 continue;
             }
 
             var xforms = EntityManager.GetEntityQuery<TransformComponent>();
-            var xform = xforms.GetComponent(grid.GridEntityId);
-            var  (_, gridWorldRotation, gridWorldMatrix, invGridWorldMatrid) = xform.GetWorldPositionRotationMatrixWithInv(xforms);
+            var xform = xforms.GetComponent(gridToTransform);
+            var  (_, gridWorldRotation, gridWorldMatrix, invGridWorldMatrid) = _transformSystem.GetWorldPositionRotationMatrixWithInv(xform, xforms);
 
-            var localEpicentre = (Vector2i) invGridWorldMatrid.Transform(epicentre.Position);
+            var localEpicentre = (Vector2i) Vector2.Transform(epicentre.Position, invGridWorldMatrid);
             var matrix = offsetMatrix * gridWorldMatrix * targetMatrix;
             var angle = gridWorldRotation - targetAngle;
 
-            var (x, y) = angle.RotateVec((tileSize / 4f, tileSize / 4f));
+            var (x, y) = angle.RotateVec(new Vector2(tileSize / 4f, tileSize / 4f));
 
             foreach (var (tile, dir) in edges)
             {
@@ -107,7 +119,7 @@ public sealed partial class ExplosionSystem : EntitySystem
                 if (delta.X * delta.X + delta.Y * delta.Y > maxDistanceSq) // no Vector2.Length???
                     continue;
 
-                var center = matrix.Transform(tile);
+                var center = Vector2.Transform(tile, matrix);
 
                 if ((dir & NeighborFlag.Cardinal) == 0)
                 {
@@ -164,9 +176,9 @@ public sealed partial class ExplosionSystem : EntitySystem
                 data.UnblockedDirections = AtmosDirection.Invalid; // all directions are blocked automatically.
 
                 if ((dir & NeighborFlag.Cardinal) == 0)
-                    data.BlockingGridEdges.Add(new(default, null, ((Vector2) tile + 0.5f) * tileSize, 0, tileSize));
+                    data.BlockingGridEdges.Add(new(default, null, (tile + Vector2Helpers.Half) * tileSize, 0, tileSize));
                 else
-                    data.BlockingGridEdges.Add(new(tile, referenceGrid.Value, ((Vector2) tile + 0.5f) * tileSize, 0, tileSize));
+                    data.BlockingGridEdges.Add(new(tile, referenceGrid.Value, (tile + Vector2Helpers.Half) * tileSize, 0, tileSize));
             }
         }
 
@@ -187,7 +199,7 @@ public sealed partial class ExplosionSystem : EntitySystem
             if (data.UnblockedDirections == AtmosDirection.Invalid)
                 continue; // already all blocked.
 
-            var tileCenter = ((Vector2) tile + 0.5f) * tileSize;
+            var tileCenter = (tile + new Vector2(0.5f, 0.5f)) * tileSize;
             foreach (var edge in data.BlockingGridEdges)
             {
                 // if a blocking edge contains the center of the tile, block all directions
@@ -198,19 +210,19 @@ public sealed partial class ExplosionSystem : EntitySystem
                 }
 
                 // check north
-                if (edge.Box.Contains(tileCenter + (0, tileSize / 2f)))
+                if (edge.Box.Contains(tileCenter + new Vector2(0, tileSize / 2f)))
                     data.UnblockedDirections &= ~AtmosDirection.North;
 
                 // check south
-                if (edge.Box.Contains(tileCenter + (0, -tileSize / 2f)))
+                if (edge.Box.Contains(tileCenter + new Vector2(0, -tileSize / 2f)))
                     data.UnblockedDirections &= ~AtmosDirection.South;
 
                 // check east
-                if (edge.Box.Contains(tileCenter + (tileSize / 2f, 0)))
+                if (edge.Box.Contains(tileCenter + new Vector2(tileSize / 2f, 0)))
                     data.UnblockedDirections &= ~AtmosDirection.East;
 
                 // check west
-                if (edge.Box.Contains(tileCenter + (-tileSize / 2f, 0)))
+                if (edge.Box.Contains(tileCenter + new Vector2(-tileSize / 2f, 0)))
                     data.UnblockedDirections &= ~AtmosDirection.West;
             }
         }
@@ -219,13 +231,13 @@ public sealed partial class ExplosionSystem : EntitySystem
     /// <summary>
     ///     When a tile is updated, we might need to update the grid edge maps.
     /// </summary>
-    private void OnTileChanged(TileChangedEvent ev)
+    private void OnTileChanged(ref TileChangedEvent ev)
     {
         // only need to update the grid-edge map if a tile was added or removed from the grid.
         if (!ev.NewTile.Tile.IsEmpty && !ev.OldTile.IsEmpty)
             return;
 
-        if (!_mapManager.TryGetGrid(ev.Entity, out var grid))
+        if (!TryComp(ev.Entity, out MapGridComponent? grid))
             return;
 
         var tileRef = ev.NewTile;
@@ -289,7 +301,7 @@ public sealed partial class ExplosionSystem : EntitySystem
     ///     Optionally ignore a specific Vector2i. Used by <see cref="OnTileChanged"/> when we already know that a
     ///     given tile is not space. This avoids unnecessary TryGetTileRef calls.
     /// </remarks>
-    private bool IsEdge(IMapGrid grid, Vector2i index, out NeighborFlag spaceDirections)
+    private bool IsEdge(MapGridComponent grid, Vector2i index, out NeighborFlag spaceDirections)
     {
         spaceDirections = NeighborFlag.Invalid;
         for (var i = 0; i < NeighbourVectors.Length; i++)
@@ -380,7 +392,7 @@ public sealed class BlockedSpaceTile
         {
             Tile = tile;
             Grid = grid;
-            Box = new(Box2.CenteredAround(center, (size, size)), angle, center);
+            Box = new(Box2.CenteredAround(center, new Vector2(size, size)), angle, center);
         }
     }
 }

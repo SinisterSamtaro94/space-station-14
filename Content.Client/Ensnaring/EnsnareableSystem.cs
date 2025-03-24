@@ -1,22 +1,25 @@
-using Content.Client.Ensnaring.Components;
 using Content.Shared.Ensnaring;
+using Content.Shared.Ensnaring.Components;
 using Robust.Client.GameObjects;
 
-namespace Content.Client.Ensnaring.Visualizers;
+namespace Content.Client.Ensnaring;
 
 public sealed class EnsnareableSystem : SharedEnsnareableSystem
 {
+    [Dependency] private readonly SharedAppearanceSystem _appearance = default!;
+
     public override void Initialize()
     {
         base.Initialize();
 
-        SubscribeLocalEvent<EnsnareableComponent, ComponentInit>(OnComponentInit);
         SubscribeLocalEvent<EnsnareableComponent, AppearanceChangeEvent>(OnAppearanceChange);
     }
 
-    private void OnComponentInit(EntityUid uid, EnsnareableComponent component, ComponentInit args)
+    protected override void OnEnsnareInit(Entity<EnsnareableComponent> ent, ref ComponentInit args)
     {
-        if(!TryComp<SpriteComponent>(uid, out var sprite))
+        base.OnEnsnareInit(ent, ref args);
+
+        if(!TryComp<SpriteComponent>(ent.Owner, out var sprite))
             return;
 
         // TODO remove this, this should just be in yaml.
@@ -28,7 +31,7 @@ public sealed class EnsnareableSystem : SharedEnsnareableSystem
         if (args.Sprite == null || !args.Sprite.LayerMapTryGet(EnsnaredVisualLayers.Ensnared, out var layer))
             return;
 
-        if (args.Component.TryGetData(EnsnareableVisuals.IsEnsnared, out bool isEnsnared))
+        if (_appearance.TryGetData<bool>(uid, EnsnareableVisuals.IsEnsnared, out var isEnsnared, args.Component))
         {
             if (component.Sprite != null)
             {

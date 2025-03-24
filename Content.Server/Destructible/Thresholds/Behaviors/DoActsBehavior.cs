@@ -2,7 +2,7 @@
 {
     [Serializable]
     [DataDefinition]
-    public sealed class DoActsBehavior : IThresholdBehavior
+    public sealed partial class DoActsBehavior : IThresholdBehavior
     {
         /// <summary>
         ///     What acts should be triggered upon activation.
@@ -15,7 +15,7 @@
             return (Acts & act) != 0;
         }
 
-        public void Execute(EntityUid owner, DestructibleSystem system)
+        public void Execute(EntityUid owner, DestructibleSystem system, EntityUid? cause = null)
         {
             if (HasAct(ThresholdActs.Breakage))
             {

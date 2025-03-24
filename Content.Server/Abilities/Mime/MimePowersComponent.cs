@@ -1,8 +1,7 @@
-using Content.Shared.Actions.ActionTypes;
+using Content.Shared.Alert;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom;
 using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype;
-using Robust.Shared.Utility;
 
 namespace Content.Server.Abilities.Mime
 {
@@ -10,12 +9,11 @@ namespace Content.Server.Abilities.Mime
     /// Lets its owner entity use mime powers, like placing invisible walls.
     /// </summary>
     [RegisterComponent]
-    public sealed class MimePowersComponent : Component
+    public sealed partial class MimePowersComponent : Component
     {
         /// <summary>
         /// Whether this component is active or not.
         /// </summarY>
-        [ViewVariables]
         [DataField("enabled")]
         public bool Enabled = true;
 
@@ -25,22 +23,13 @@ namespace Content.Server.Abilities.Mime
         [DataField("wallPrototype", customTypeSerializer: typeof(PrototypeIdSerializer<EntityPrototype>))]
         public string WallPrototype = "WallInvisible";
 
-        [DataField("invisibleWallAction")]
-        public InstantAction InvisibleWallAction = new()
-        {
-            UseDelay = TimeSpan.FromSeconds(30),
-            Icon = new SpriteSpecifier.Texture(new ResourcePath("Structures/Walls/solid.rsi/full.png")),
-            DisplayName = "mime-invisible-wall",
-            Description = "mime-invisible-wall-desc",
-            Priority = -1,
-            Event = new InvisibleWallActionEvent(),
-        };
+        [DataField("invisibleWallAction", customTypeSerializer: typeof(PrototypeIdSerializer<EntityPrototype>))]
+        public string? InvisibleWallAction = "ActionMimeInvisibleWall";
 
+        [DataField("invisibleWallActionEntity")] public EntityUid? InvisibleWallActionEntity;
 
-        /// The vow zone lies below
-
+        // The vow zone lies below
         public bool VowBroken = false;
-
 
         /// <summary>
         /// Whether this mime is ready to take the vow again.
@@ -56,8 +45,26 @@ namespace Content.Server.Abilities.Mime
 
         /// <summary>
         /// How long it takes the mime to get their powers back
-
-        [DataField("vowCooldown", customTypeSerializer: typeof(TimeOffsetSerializer))]
+        /// </summary>
+        [DataField("vowCooldown")]
         public TimeSpan VowCooldown = TimeSpan.FromMinutes(5);
+
+        [DataField]
+        public ProtoId<AlertPrototype> VowAlert = "VowOfSilence";
+
+        [DataField]
+        public ProtoId<AlertPrototype> VowBrokenAlert = "VowBroken";
+
+        /// <summary>
+        /// Does this component prevent the mime from writing on paper while their vow is active?
+        /// </summary>
+        [DataField]
+        public bool PreventWriting = false;
+
+        /// <summary>
+        /// What message is displayed when the mime fails to write?
+        /// </summary>
+        [DataField]
+        public LocId FailWriteMessage = "paper-component-illiterate-mime";
     }
 }

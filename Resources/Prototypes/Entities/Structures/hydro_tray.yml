@@ -1,20 +1,21 @@
 - type: entity
   name: hydroponics tray
-  parent: [ hydroponicsSoil, ConstructibleMachine]
+  parent: [ hydroponicsSoil, SmallConstructibleMachine]
   id: hydroponicsTray
   description: An interstellar-grade space farmplot allowing for rapid growth and selective breeding of crops. Just... keep in mind the space weeds.
   components:
-  - type: Transform
-    noRot: true
   - type: Fixtures
     fixtures:
-    - shape:
-        !type:PhysShapeAabb
-        bounds: "-0.45,-0.45,0.45,0.1"
-      density: 190
-      hard: true
-      mask:
-      - MachineMask
+      fix1:
+        shape:
+          !type:PhysShapeAabb
+          bounds: "-0.45,-0.45,0.45,0.1"
+        density: 190
+        hard: true
+        mask:
+        - MachineMask
+        layer:
+        - BulletImpassable
   - type: Anchorable
   - type: Pullable
   - type: Sprite
@@ -66,6 +67,11 @@
           False: { visible: false }
   - type: PlantHolder
     drawWarnings: true
+    wateringSound:
+      path: /Audio/Effects/Fluids/slosh.ogg
+      params:
+        volume: -6
+        variation: 0.20
   - type: Destructible
     thresholds:
     - trigger:
@@ -74,15 +80,31 @@
       behaviors:
       - !type:ChangeConstructionNodeBehavior
         node: machineFrame
+      - !type:PlaySoundBehavior
+        sound:
+          collection: MetalGlassBreak
       - !type:DoActsBehavior
         acts: ["Destruction"]
   - type: Machine
     board: HydroponicsTrayMachineCircuitboard
-  - type: Wires
-    BoardName: "HydroponicsTray"
-    LayoutId: HydroponicsTray
+  - type: WiresPanel
   - type: AmbientSound
     volume: -9
     range: 5
     sound:
       path: /Audio/Ambience/Objects/flowing_water_open.ogg
+  - type: GuideHelp
+    guides:
+    - Botany
+    - Chemicals
+
+- type: entity
+  parent: hydroponicsTray
+  id: HydroponicsTrayEmpty
+  suffix: Empty
+  components:
+  - type: PlantHolder
+    waterLevel: 0
+    nutritionLevel: 0
+    # for the lights to update immediately
+    updateSpriteAfterUpdate: true

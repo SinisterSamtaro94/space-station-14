@@ -1,20 +1,25 @@
 using System.Buffers;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Content.Server.Administration.Managers;
 using Content.Server.Destructible;
-using Content.Server.NPC.Components;
+using Content.Server.NPC.Systems;
+using Content.Shared.Access.Components;
 using Content.Shared.Administration;
-using Content.Shared.Interaction;
+using Content.Shared.Climbing.Components;
+using Content.Shared.Doors.Components;
 using Content.Shared.NPC;
 using Robust.Server.Player;
 using Robust.Shared.Enums;
 using Robust.Shared.Map;
-using Robust.Shared.Physics.Components;
+using Robust.Shared.Map.Components;
+using Robust.Shared.Physics;
 using Robust.Shared.Physics.Systems;
-using Robust.Shared.Players;
+using Robust.Shared.Player;
 using Robust.Shared.Random;
+using Robust.Shared.Threading;
 using Robust.Shared.Timing;
 using Robust.Shared.Utility;
 
@@ -37,15 +42,20 @@ namespace Content.Server.NPC.Pathfinding
 
         [Dependency] private readonly IAdminManager _adminManager = default!;
         [Dependency] private readonly IGameTiming _timing = default!;
+        [Dependency] private readonly IParallelManager _parallel = default!;
         [Dependency] private readonly IPlayerManager _playerManager = default!;
         [Dependency] private readonly IRobustRandom _random = default!;
         [Dependency] private readonly DestructibleSystem _destructible = default!;
+        [Dependency] private readonly EntityLookupSystem _lookup = default!;
         [Dependency] private readonly FixtureSystem _fixtures = default!;
-
-        private ISawmill _sawmill = default!;
+        [Dependency] private readonly NPCSystem _npc = default!;
+        [Dependency] private readonly SharedMapSystem _maps = default!;
+        [Dependency] private readonly SharedPhysicsSystem _physics = default!;
+        [Dependency] private readonly SharedTransformSystem _transform = default!;
 
         private readonly Dictionary<ICommonSession, PathfindingDebugMode> _subscribedSessions = new();
 
+        [ViewVariables]
         private readonly List<PathRequest> _pathRequests = new(PathTickLimit);
 
         private static readonly TimeSpan PathTime = TimeSpan.FromMilliseconds(3);
@@ -56,12 +66,28 @@ namespace Content.Server.NPC.Pathfinding
         private const int PathTickLimit = 256;
 
         private int _portalIndex;
-        private Dictionary<int, PathPortal> _portals = new();
+        private readonly Dictionary<int, PathPortal> _portals = new();
+
+        private EntityQuery<AccessReaderComponent> _accessQuery;
+        private EntityQuery<DestructibleComponent> _destructibleQuery;
+        private EntityQuery<DoorComponent> _doorQuery;
+        private EntityQuery<ClimbableComponent> _climbableQuery;
+        private EntityQuery<FixturesComponent> _fixturesQuery;
+        private EntityQuery<MapGridComponent> _gridQuery;
+        private EntityQuery<TransformComponent> _xformQuery;
 
         public override void Initialize()
         {
             base.Initialize();
-            _sawmill = Logger.GetSawmill("nav");
+
+            _accessQuery = GetEntityQuery<AccessReaderComponent>();
+            _destructibleQuery = GetEntityQuery<DestructibleComponent>();
+            _doorQuery = GetEntityQuery<DoorComponent>();
+            _climbableQuery = GetEntityQuery<ClimbableComponent>();
+            _fixturesQuery = GetEntityQuery<FixturesComponent>();
+            _gridQuery = GetEntityQuery<MapGridComponent>();
+            _xformQuery = GetEntityQuery<TransformComponent>();
+
             _playerManager.PlayerStatusChanged += OnPlayerChange;
             InitializeGrid();
             SubscribeNetworkEvent<RequestPathfindingDebugMessage>(OnBreadcrumbs);
@@ -72,17 +98,24 @@ namespace Content.Server.NPC.Pathfinding
             base.Shutdown();
             _subscribedSessions.Clear();
             _playerManager.PlayerStatusChanged -= OnPlayerChange;
+            _transform.OnGlobalMoveEvent -= OnMoveEvent;
         }
 
         public override void Update(float frameTime)
         {
             base.Update(frameTime);
-            UpdateGrid();
+            var options = new ParallelOptions()
+            {
+                MaxDegreeOfParallelism = _parallel.ParallelProcessCount,
+            };
+
+            UpdateGrid(options);
             _stopwatch.Restart();
             var amount = Math.Min(PathTickLimit, _pathRequests.Count);
             var results = ArrayPool<PathResult>.Shared.Rent(amount);
 
-            Parallel.For(0, amount, i =>
+
+            Parallel.For(0, amount, options, i =>
             {
                 // If we're over the limit (either time-sliced or hard cap).
                 if (_stopwatch.Elapsed >= PathTime)
@@ -131,7 +164,6 @@ namespace Content.Server.NPC.Pathfinding
                 switch (result)
                 {
                     case PathResult.Continuing:
-                        DebugTools.Assert(path.Frontier.Count > 0);
                         break;
                     case PathResult.PartialPath:
                     case PathResult.Path:
@@ -227,29 +259,27 @@ namespace Content.Server.NPC.Pathfinding
 
         public async Task<PathResultEvent> GetRandomPath(
             EntityUid entity,
-            float range,
             float maxRange,
             CancellationToken cancelToken,
             int limit = 40,
             PathFlags flags = PathFlags.None)
         {
-            if (!TryComp<TransformComponent>(entity, out var start))
-                return new PathResultEvent(PathResult.NoPath, new Queue<PathPoly>());
+            if (!TryComp(entity, out TransformComponent? start))
+                return new PathResultEvent(PathResult.NoPath, new List<PathPoly>());
 
             var layer = 0;
             var mask = 0;
 
-            if (TryComp<PhysicsComponent>(entity, out var body))
+            if (TryComp<FixturesComponent>(entity, out var fixtures))
             {
-                layer = body.CollisionLayer;
-                mask = body.CollisionMask;
+                (layer, mask) = _physics.GetHardCollision(entity, fixtures);
             }
 
-            var request = new BFSPathRequest(maxRange, limit, start.Coordinates, flags, range, layer, mask, cancelToken);
+            var request = new BFSPathRequest(maxRange, limit, start.Coordinates, flags, layer, mask, cancelToken);
             var path = await GetPath(request);
 
             if (path.Result != PathResult.Path)
-                return new PathResultEvent(PathResult.NoPath, new Queue<PathPoly>());
+                return new PathResultEvent(PathResult.NoPath, new List<PathPoly>());
 
             return new PathResultEvent(PathResult.Path, path.Path);
         }
@@ -264,7 +294,7 @@ namespace Content.Server.NPC.Pathfinding
             CancellationToken cancelToken,
             PathFlags flags = PathFlags.None)
         {
-            if (!TryComp<TransformComponent>(entity, out var start))
+            if (!TryComp(entity, out TransformComponent? start))
                 return null;
 
             var request = GetRequest(entity, start.Coordinates, end, range, cancelToken, flags);
@@ -277,14 +307,13 @@ namespace Content.Server.NPC.Pathfinding
                 return 0f;
 
             var distance = 0f;
-            var node = path.Path.Dequeue();
-            var lastNode = node;
+            var lastNode = path.Path[0];
 
-            do
+            for (var i = 1; i < path.Path.Count; i++)
             {
+                var node = path.Path[i];
                 distance += GetTileCost(request, lastNode, node);
-                lastNode = node;
-            } while (path.Path.TryDequeue(out node));
+            }
 
             return distance;
         }
@@ -296,9 +325,9 @@ namespace Content.Server.NPC.Pathfinding
             CancellationToken cancelToken,
             PathFlags flags = PathFlags.None)
         {
-            if (!TryComp<TransformComponent>(entity, out var xform) ||
-                !TryComp<TransformComponent>(target, out var targetXform))
-                return new PathResultEvent(PathResult.NoPath, new Queue<PathPoly>());
+            if (!TryComp(entity, out TransformComponent? xform) ||
+                !TryComp(target, out TransformComponent? targetXform))
+                return new PathResultEvent(PathResult.NoPath, new List<PathPoly>());
 
             var request = GetRequest(entity, xform.Coordinates, targetXform.Coordinates, range, cancelToken, flags);
             return await GetPath(request);
@@ -314,6 +343,21 @@ namespace Content.Server.NPC.Pathfinding
         {
             var request = GetRequest(entity, start, end, range, cancelToken, flags);
             return await GetPath(request);
+        }
+
+        /// <summary>
+        /// Gets a path in a thread-safe way.
+        /// </summary>
+        public async Task<PathResultEvent> GetPathSafe(
+            EntityUid entity,
+            EntityCoordinates start,
+            EntityCoordinates end,
+            float range,
+            CancellationToken cancelToken,
+            PathFlags flags = PathFlags.None)
+        {
+            var request = GetRequest(entity, start, end, range, cancelToken, flags);
+            return await GetPath(request, true);
         }
 
         /// <summary>
@@ -356,12 +400,12 @@ namespace Content.Server.NPC.Pathfinding
             var gridUid = coordinates.GetGridUid(EntityManager);
 
             if (!TryComp<GridPathfindingComponent>(gridUid, out var comp) ||
-                !TryComp<TransformComponent>(gridUid, out var xform))
+                !TryComp(gridUid, out TransformComponent? xform))
             {
                 return null;
             }
 
-            var localPos = xform.InvWorldMatrix.Transform(coordinates.ToMapPos(EntityManager));
+            var localPos = Vector2.Transform(coordinates.ToMapPos(EntityManager, _transform), _transform.GetInvWorldMatrix(xform));
             var origin = GetOrigin(localPos);
 
             if (!TryGetChunk(origin, comp, out var chunk))
@@ -386,10 +430,9 @@ namespace Content.Server.NPC.Pathfinding
             var layer = 0;
             var mask = 0;
 
-            if (TryComp<PhysicsComponent>(entity, out var body))
+            if (TryComp<FixturesComponent>(entity, out var fixtures))
             {
-                layer = body.CollisionLayer;
-                mask = body.CollisionMask;
+                (layer, mask) = _physics.GetHardCollision(entity, fixtures);
             }
 
             return new AStarPathRequest(start, end, flags, range, layer, mask, cancelToken);
@@ -397,7 +440,7 @@ namespace Content.Server.NPC.Pathfinding
 
         public PathFlags GetFlags(EntityUid uid)
         {
-            if (!TryComp<NPCComponent>(uid, out var npc))
+            if (!_npc.TryGetNpc(uid, out var npc))
             {
                 return PathFlags.None;
             }
@@ -409,17 +452,22 @@ namespace Content.Server.NPC.Pathfinding
         {
             var flags = PathFlags.None;
 
-            if (blackboard.TryGetValue<bool>(NPCBlackboard.NavPry, out var pry) && pry)
+            if (blackboard.TryGetValue<bool>(NPCBlackboard.NavPry, out var pry, EntityManager) && pry)
             {
                 flags |= PathFlags.Prying;
             }
 
-            if (blackboard.TryGetValue<bool>(NPCBlackboard.NavSmash, out var smash) && smash)
+            if (blackboard.TryGetValue<bool>(NPCBlackboard.NavSmash, out var smash, EntityManager) && smash)
             {
                 flags |= PathFlags.Smashing;
             }
 
-            if (blackboard.TryGetValue<bool>(NPCBlackboard.NavInteract, out var interact) && interact)
+            if (blackboard.TryGetValue<bool>(NPCBlackboard.NavClimb, out var climb, EntityManager) && climb)
+            {
+                flags |= PathFlags.Climbing;
+            }
+
+            if (blackboard.TryGetValue<bool>(NPCBlackboard.NavInteract, out var interact, EntityManager) && interact)
             {
                 flags |= PathFlags.Interact;
             }
@@ -428,12 +476,22 @@ namespace Content.Server.NPC.Pathfinding
         }
 
         private async Task<PathResultEvent> GetPath(
-            PathRequest request)
+            PathRequest request, bool safe = false)
         {
             // We could maybe try an initial quick run to avoid forcing time-slicing over ticks.
             // For now it seems okay and it shouldn't block on 1 NPC anyway.
 
-            _pathRequests.Add(request);
+            if (safe)
+            {
+                lock (_pathRequests)
+                {
+                    _pathRequests.Add(request);
+                }
+            }
+            else
+            {
+                _pathRequests.Add(request);
+            }
 
             await request.Task;
 
@@ -444,7 +502,7 @@ namespace Content.Server.NPC.Pathfinding
 
             if (!request.Task.IsCompletedSuccessfully)
             {
-                return new PathResultEvent(PathResult.NoPath, new Queue<PathPoly>());
+                return new PathResultEvent(PathResult.NoPath, new List<PathPoly>());
             }
 
             // Same context as do_after and not synchronously blocking soooo
@@ -460,16 +518,16 @@ namespace Content.Server.NPC.Pathfinding
         private DebugPathPoly GetDebugPoly(PathPoly poly)
         {
             // Create fake neighbors for it
-            var neighbors = new List<EntityCoordinates>(poly.Neighbors.Count);
+            var neighbors = new List<NetCoordinates>(poly.Neighbors.Count);
 
             foreach (var neighbor in poly.Neighbors)
             {
-                neighbors.Add(neighbor.Coordinates);
+                neighbors.Add(GetNetCoordinates(neighbor.Coordinates));
             }
 
             return new DebugPathPoly()
             {
-                GraphUid = poly.GraphUid,
+                GraphUid = GetNetEntity(poly.GraphUid),
                 ChunkOrigin = poly.ChunkOrigin,
                 TileIndex = poly.TileIndex,
                 Box = poly.Box,
@@ -488,13 +546,13 @@ namespace Content.Server.NPC.Pathfinding
                 if ((session.Value & PathfindingDebugMode.Routes) == 0x0)
                     continue;
 
-                RaiseNetworkEvent(new PathRouteMessage(request.Polys.Select(GetDebugPoly).ToList(), new Dictionary<DebugPathPoly, float>()), session.Key.ConnectedClient);
+                RaiseNetworkEvent(new PathRouteMessage(request.Polys.Select(GetDebugPoly).ToList(), new Dictionary<DebugPathPoly, float>()), session.Key.Channel);
             }
         }
 
         private void OnBreadcrumbs(RequestPathfindingDebugMessage msg, EntitySessionEventArgs args)
         {
-            var pSession = (IPlayerSession) args.SenderSession;
+            var pSession = args.SenderSession;
 
             if (!_adminManager.HasAdminFlag(pSession, AdminFlags.Debug))
             {
@@ -542,18 +600,21 @@ namespace Content.Server.NPC.Pathfinding
         {
             var msg = new PathBreadcrumbsMessage();
 
-            foreach (var comp in EntityQuery<GridPathfindingComponent>(true))
+            var query = AllEntityQuery<GridPathfindingComponent>();
+            while (query.MoveNext(out var uid, out var comp))
             {
-                msg.Breadcrumbs.Add(comp.Owner, new Dictionary<Vector2i, List<PathfindingBreadcrumb>>(comp.Chunks.Count));
+                var netGrid = GetNetEntity(uid);
+
+                msg.Breadcrumbs.Add(netGrid, new Dictionary<Vector2i, List<PathfindingBreadcrumb>>(comp.Chunks.Count));
 
                 foreach (var chunk in comp.Chunks)
                 {
                     var data = GetCrumbs(chunk.Value);
-                    msg.Breadcrumbs[comp.Owner].Add(chunk.Key, data);
+                    msg.Breadcrumbs[netGrid].Add(chunk.Key, data);
                 }
             }
 
-            RaiseNetworkEvent(msg, pSession.ConnectedClient);
+            RaiseNetworkEvent(msg, pSession.Channel);
         }
 
         private void SendRoute(PathRequest request)
@@ -581,7 +642,7 @@ namespace Content.Server.NPC.Pathfinding
                 if (!IsRoute(session.Value))
                     continue;
 
-                RaiseNetworkEvent(msg, session.Key.ConnectedClient);
+                RaiseNetworkEvent(msg, session.Key.Channel);
             }
         }
 
@@ -589,18 +650,21 @@ namespace Content.Server.NPC.Pathfinding
         {
             var msg = new PathPolysMessage();
 
-            foreach (var comp in EntityQuery<GridPathfindingComponent>(true))
+            var query = AllEntityQuery<GridPathfindingComponent>();
+            while (query.MoveNext(out var uid, out var comp))
             {
-                msg.Polys.Add(comp.Owner, new Dictionary<Vector2i, Dictionary<Vector2i, List<DebugPathPoly>>>(comp.Chunks.Count));
+                var netGrid = GetNetEntity(uid);
+
+                msg.Polys.Add(netGrid, new Dictionary<Vector2i, Dictionary<Vector2i, List<DebugPathPoly>>>(comp.Chunks.Count));
 
                 foreach (var chunk in comp.Chunks)
                 {
                     var data = GetPolys(chunk.Value);
-                    msg.Polys[comp.Owner].Add(chunk.Key, data);
+                    msg.Polys[netGrid].Add(chunk.Key, data);
                 }
             }
 
-            RaiseNetworkEvent(msg, pSession.ConnectedClient);
+            RaiseNetworkEvent(msg, pSession.Channel);
         }
 
         private void SendBreadcrumbs(GridPathfindingChunk chunk, EntityUid gridUid)
@@ -611,7 +675,7 @@ namespace Content.Server.NPC.Pathfinding
             var msg = new PathBreadcrumbsRefreshMessage()
             {
                 Origin = chunk.Origin,
-                GridUid = gridUid,
+                GridUid = GetNetEntity(gridUid),
                 Data = GetCrumbs(chunk),
             };
 
@@ -620,7 +684,7 @@ namespace Content.Server.NPC.Pathfinding
                 if (!IsCrumb(session.Value))
                     continue;
 
-                RaiseNetworkEvent(msg, session.Key.ConnectedClient);
+                RaiseNetworkEvent(msg, session.Key.Channel);
             }
         }
 
@@ -645,7 +709,7 @@ namespace Content.Server.NPC.Pathfinding
             var msg = new PathPolysRefreshMessage()
             {
                 Origin = chunk.Origin,
-                GridUid = gridUid,
+                GridUid = GetNetEntity(gridUid),
                 Polys = data,
             };
 
@@ -654,7 +718,7 @@ namespace Content.Server.NPC.Pathfinding
                 if (!IsPoly(session.Value))
                     continue;
 
-                RaiseNetworkEvent(msg, session.Key.ConnectedClient);
+                RaiseNetworkEvent(msg, session.Key.Channel);
             }
         }
 

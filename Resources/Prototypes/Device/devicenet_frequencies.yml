@@ -1,4 +1,14 @@
 - type: deviceFrequency
+  id: ShuttleTimer
+  name: device-frequency-prototype-name-shuttle-timer
+  frequency: 2450
+
+- type: deviceFrequency
+  id: ArrivalsShuttleTimer
+  name: device-frequency-prototype-name-arrivals-shuttle-timer
+  frequency: 2451
+
+- type: deviceFrequency
   id: SurveillanceCamera
   name: device-frequency-prototype-name-surveillance-camera
   frequency: 1926 # i only have so many of these, y'know?
@@ -53,11 +63,29 @@
   name: device-frequency-prototype-name-atmos
   frequency: 1621
 
-# Only listen to this frequency if you are a health or GPS monitor. Otherwise you will just slow down the server by constantly receiving periodic broadcasts from every player-entity.
+# Only listen to this frequency if you are a crew monitor server. Otherwise you will just slow down the server by constantly receiving periodic broadcasts from every player-entity.
 - type: deviceFrequency
   id: SuitSensor
   name: device-frequency-prototype-name-suit-sensors
   frequency: 1262
+
+# Crew monitors listen to this for a list of suit sensor statuses
+- type: deviceFrequency
+  id: CrewMonitor
+  name: device-frequency-prototype-name-crew-monitor
+  frequency: 1261
+
+# Cyborgs broadcast to consoles on this frequency
+- type: deviceFrequency
+  id: RoboticsConsole
+  name: device-frequency-prototype-name-robotics-console
+  frequency: 1291
+
+# Console sends commands to cyborgs on this frequency
+- type: deviceFrequency
+  id: CyborgControl
+  name: device-frequency-prototype-name-cyborg-control
+  frequency: 1292
 
 # This frequency will likely have a LARGE number of listening entities. Please don't broadcast on this frequency.
 - type: deviceFrequency
@@ -74,3 +102,13 @@
   id: PDA
   name: device-frequency-prototype-name-pdas
   frequency: 2202
+
+- type: deviceFrequency
+  id: Fax
+  name: device-frequency-prototype-name-fax
+  frequency: 2640
+
+- type: deviceFrequency
+  id: BasicDevice
+  name: device-frequency-prototype-name-basic-device
+  frequency: 1280

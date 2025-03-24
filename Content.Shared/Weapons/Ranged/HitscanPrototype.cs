@@ -1,17 +1,18 @@
 using Content.Shared.Damage;
 using Content.Shared.Physics;
+using Content.Shared.Weapons.Reflect;
 using Robust.Shared.Audio;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Utility;
 
 namespace Content.Shared.Weapons.Ranged;
 
-[Prototype("hitscan")]
-public sealed class HitscanPrototype : IPrototype, IShootable
+[Prototype]
+public sealed partial class HitscanPrototype : IPrototype, IShootable
 {
     [ViewVariables]
-    [IdDataFieldAttribute]
-    public string ID { get; } = default!;
+    [IdDataField]
+    public string ID { get; private set; } = default!;
 
     [ViewVariables(VVAccess.ReadWrite), DataField("staminaDamage")]
     public float StaminaDamage;
@@ -28,13 +29,18 @@ public sealed class HitscanPrototype : IPrototype, IShootable
     [ViewVariables(VVAccess.ReadOnly), DataField("impactFlash")]
     public SpriteSpecifier? ImpactFlash;
 
-    [ViewVariables, DataField("collisionMask")]
+    [DataField("collisionMask")]
     public int CollisionMask = (int) CollisionGroup.Opaque;
+
+    /// <summary>
+    /// What we count as for reflection.
+    /// </summary>
+    [DataField("reflective")] public ReflectType Reflective = ReflectType.Energy;
 
     /// <summary>
     /// Sound that plays upon the thing being hit.
     /// </summary>
-    [ViewVariables, DataField("sound")]
+    [DataField("sound")]
     public SoundSpecifier? Sound;
 
     /// <summary>
@@ -46,6 +52,6 @@ public sealed class HitscanPrototype : IPrototype, IShootable
     /// <summary>
     /// Try not to set this too high.
     /// </summary>
-    [ViewVariables, DataField("maxLength")]
+    [DataField("maxLength")]
     public float MaxLength = 20f;
 }

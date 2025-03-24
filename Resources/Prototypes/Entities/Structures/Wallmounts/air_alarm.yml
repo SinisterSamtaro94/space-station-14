@@ -2,7 +2,12 @@
   id: AirAlarm
   name: air alarm
   description: An air alarm. Alarms... air?
+  placement:
+    mode: SnapgridCenter
+    snap:
+    - Wallmount
   components:
+  - type: StationAiWhitelist
   - type: WallMount
   - type: ApcPowerReceiver
   - type: Electrified
@@ -16,14 +21,26 @@
     prefix: device-address-prefix-air-alarm
     sendBroadcastAttemptEvent: true
   - type: WiredNetworkConnection
+  # for output status ports
+  - type: WirelessNetworkConnection
+    range: 200
   - type: DeviceList
   - type: DeviceNetworkRequiresPower
+  - type: DeviceLinkSource
+    ports:
+    - AirDanger
+    - AirWarning
+    - AirNormal
+    lastSignals:
+      AirDanger: false
+      AirWarning: false
+      AirNormal: false
   - type: AtmosAlarmable
     syncWith:
-      - AirAlarm
-      - AirSensor
-      - GasVent
-      - GasScrubber
+    - AirAlarm
+    - AirSensor
+    - GasVent
+    - GasScrubber
   - type: AtmosAlarmableVisuals
     layerMap: "airAlarmBase"
     alarmStates:
@@ -37,19 +54,28 @@
       - AirAlarm
   - type: AtmosDevice
   - type: AirAlarm
+  - type: AtmosAlertsDevice
+    group: AirAlarm
   - type: Clickable
   - type: InteractionOutline
   - type: UserInterface
     interfaces:
-    - key: enum.SharedAirAlarmInterfaceKey.Key
-      type: AirAlarmBoundUserInterface
-    - key: enum.WiresUiKey.Key
-      type: WiresBoundUserInterface
+      enum.SharedAirAlarmInterfaceKey.Key:
+        type: AirAlarmBoundUserInterface
+      enum.WiresUiKey.Key:
+        type: WiresBoundUserInterface
+  - type: WiresPanel
   - type: Wires
-    BoardName: "Air Alarm"
-    LayoutId: AirAlarm
+    boardName: wires-board-name-airalarm
+    layoutId: AirAlarm
   - type: AccessReader
     access: [["Atmospherics"]]
+  - type: ContainerFill
+    containers:
+      board: [ AirAlarmElectronics ]
+  - type: ContainerContainer
+    containers:
+      board: !type:Container
   - type: Appearance
   - type: WiresVisuals
   - type: Sprite
@@ -65,10 +91,16 @@
     graph: AirAlarm
     node: air_alarm
   - type: Damageable
-    damageContainer: Inorganic
+    damageContainer: StructuralInorganic
     damageModifierSet: Metallic
   - type: Destructible
     thresholds:
+      - trigger:
+          !type:DamageTrigger
+          damage: 200
+        behaviors:
+          - !type:DoActsBehavior
+            acts: [ "Destruction" ]
       - trigger:
           !type:DamageTrigger
           damage: 100
@@ -77,29 +109,40 @@
             acts: [ "Destruction" ]
           - !type:PlaySoundBehavior
             sound:
-              path: /Audio/Effects/metalbreak.ogg
-  placement:
-    mode: SnapgridCenter
-    snap:
-    - Wallmount
+              collection: MetalGlassBreak
+              params:
+                volume: -4
+  - type: GuideHelp
+    guides:
+    - AirAlarms
+    - DeviceMonitoringAndControl
 
 - type: entity
   id: AirAlarmAssembly
   name: air alarm assembly
   description: An air alarm. Doesn't look like it'll be alarming air any time soon.
+  placement:
+    mode: SnapgridCenter
+    snap:
+    - Wallmount
   components:
   - type: WallMount
   - type: Clickable
   - type: InteractionOutline
   - type: Sprite
     sprite: Structures/Wallmounts/air_monitors.rsi
-    state: alarm_b1
+    layers:
+    - state: alarm_b1
+      map: [ "enum.ConstructionVisuals.Layer" ]
+  - type: Appearance
+  - type: GenericVisualizer
+    visuals:
+      enum.ConstructionVisuals.Key:
+        enum.ConstructionVisuals.Layer:
+          assembly: { state: alarm_b1 }
+          electronics: { state: alarm_b1 }
   - type: Construction
     graph: AirAlarm
     node: assembly
   - type: Transform
     anchored: true
-  placement:
-    mode: SnapgridCenter
-    snap:
-    - Wallmount

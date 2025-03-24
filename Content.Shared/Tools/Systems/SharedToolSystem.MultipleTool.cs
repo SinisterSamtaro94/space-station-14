@@ -1,54 +1,40 @@
 using System.Linq;
 using Content.Shared.Interaction;
+using Content.Shared.Prying.Components;
 using Content.Shared.Tools.Components;
-using Robust.Shared.GameStates;
-using Robust.Shared.Prototypes;
 
-namespace Content.Shared.Tools;
+namespace Content.Shared.Tools.Systems;
 
-public abstract class SharedToolSystem : EntitySystem
+public abstract partial class SharedToolSystem
 {
-    [Dependency] private readonly IPrototypeManager _protoMan = default!;
-    [Dependency] private readonly SharedAudioSystem _audioSystem = default!;
-
-    public override void Initialize()
+    public void InitializeMultipleTool()
     {
-        SubscribeLocalEvent<SharedMultipleToolComponent, ComponentStartup>(OnMultipleToolStartup);
-        SubscribeLocalEvent<SharedMultipleToolComponent, ActivateInWorldEvent>(OnMultipleToolActivated);
-        SubscribeLocalEvent<SharedMultipleToolComponent, ComponentGetState>(OnMultipleToolGetState);
-        SubscribeLocalEvent<SharedMultipleToolComponent, ComponentHandleState>(OnMultipleToolHandleState);
+        SubscribeLocalEvent<MultipleToolComponent, ComponentStartup>(OnMultipleToolStartup);
+        SubscribeLocalEvent<MultipleToolComponent, ActivateInWorldEvent>(OnMultipleToolActivated);
+        SubscribeLocalEvent<MultipleToolComponent, AfterAutoHandleStateEvent>(OnMultipleToolHandleState);
     }
 
-    private void OnMultipleToolHandleState(EntityUid uid, SharedMultipleToolComponent component, ref ComponentHandleState args)
+    private void OnMultipleToolHandleState(EntityUid uid, MultipleToolComponent component, ref AfterAutoHandleStateEvent args)
     {
-        if (args.Current is not MultipleToolComponentState state)
-            return;
-
-        component.CurrentEntry = state.Selected;
         SetMultipleTool(uid, component);
     }
 
-    private void OnMultipleToolStartup(EntityUid uid, SharedMultipleToolComponent multiple, ComponentStartup args)
+    private void OnMultipleToolStartup(EntityUid uid, MultipleToolComponent multiple, ComponentStartup args)
     {
         // Only set the multiple tool if we have a tool component.
-        if(EntityManager.TryGetComponent(uid, out ToolComponent? tool))
+        if (EntityManager.TryGetComponent(uid, out ToolComponent? tool))
             SetMultipleTool(uid, multiple, tool);
     }
 
-    private void OnMultipleToolActivated(EntityUid uid, SharedMultipleToolComponent multiple, ActivateInWorldEvent args)
+    private void OnMultipleToolActivated(EntityUid uid, MultipleToolComponent multiple, ActivateInWorldEvent args)
     {
-        if (args.Handled)
+        if (args.Handled || !args.Complex)
             return;
 
         args.Handled = CycleMultipleTool(uid, multiple, args.User);
     }
 
-    private void OnMultipleToolGetState(EntityUid uid, SharedMultipleToolComponent multiple, ref ComponentGetState args)
-    {
-        args.State = new MultipleToolComponentState(multiple.CurrentEntry);
-    }
-
-    public bool CycleMultipleTool(EntityUid uid, SharedMultipleToolComponent? multiple = null, EntityUid? user = null)
+    public bool CycleMultipleTool(EntityUid uid, MultipleToolComponent? multiple = null, EntityUid? user = null)
     {
         if (!Resolve(uid, ref multiple))
             return false;
@@ -56,14 +42,14 @@ public abstract class SharedToolSystem : EntitySystem
         if (multiple.Entries.Length == 0)
             return false;
 
-        multiple.CurrentEntry = (uint) ((multiple.CurrentEntry + 1) % multiple.Entries.Length);
+        multiple.CurrentEntry = (uint)((multiple.CurrentEntry + 1) % multiple.Entries.Length);
         SetMultipleTool(uid, multiple, playSound: true, user: user);
 
         return true;
     }
 
     public virtual void SetMultipleTool(EntityUid uid,
-        SharedMultipleToolComponent? multiple = null,
+        MultipleToolComponent? multiple = null,
         ToolComponent? tool = null,
         bool playSound = false,
         EntityUid? user = null)
@@ -71,7 +57,7 @@ public abstract class SharedToolSystem : EntitySystem
         if (!Resolve(uid, ref multiple, ref tool))
             return;
 
-        Dirty(multiple);
+        Dirty(uid, multiple);
 
         if (multiple.Entries.Length <= multiple.CurrentEntry)
         {
@@ -80,8 +66,14 @@ public abstract class SharedToolSystem : EntitySystem
         }
 
         var current = multiple.Entries[multiple.CurrentEntry];
-        tool.UseSound = current.Sound;
+        tool.UseSound = current.UseSound;
         tool.Qualities = current.Behavior;
+
+        // TODO: Replace this with a better solution later
+        if (TryComp<PryingComponent>(uid, out var pryComp))
+        {
+            pryComp.Enabled = current.Behavior.Contains("Prying");
+        }
 
         if (playSound && current.ChangeSound != null)
             _audioSystem.PlayPredicted(current.ChangeSound, uid, user);

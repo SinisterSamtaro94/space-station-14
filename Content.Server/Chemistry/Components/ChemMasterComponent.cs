@@ -10,13 +10,16 @@ namespace Content.Server.Chemistry.Components
     /// </summary>
     [RegisterComponent]
     [Access(typeof(ChemMasterSystem))]
-    public sealed class ChemMasterComponent : Component
+    public sealed partial class ChemMasterComponent : Component
     {
         [DataField("pillType"), ViewVariables(VVAccess.ReadWrite)]
         public uint PillType = 0;
 
         [DataField("mode"), ViewVariables(VVAccess.ReadWrite)]
         public ChemMasterMode Mode = ChemMasterMode.Transfer;
+
+        [DataField]
+        public ChemMasterSortingType SortingType = ChemMasterSortingType.None;
 
         [DataField("pillDosageLimit", required: true), ViewVariables(VVAccess.ReadWrite)]
         public uint PillDosageLimit;

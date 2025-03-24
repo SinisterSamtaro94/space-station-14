@@ -1,4 +1,4 @@
-﻿- type: entity
+- type: entity
   parent: BaseItem
   id: BedsheetBase
   name: BedsheetBase
@@ -11,16 +11,18 @@
   components:
   - type: Sprite
     sprite: Objects/Misc/bedsheets.rsi
-    netsync: false
     noRot: true
   - type: Item
-    size: 10
+    size: Small
   - type: Clothing
     quickEquip: true
     slots:
     - neck
   - type: StaticPrice
     price: 100
+  - type: Tag
+    tags:
+    - Bedsheet
 
 - type: entity
   id: BedsheetBlack
@@ -62,6 +64,8 @@
     state: sheetcaptain
   - type: Clothing
     sprite: Clothing/Neck/Bedsheets/captain.rsi
+  - type: StealTarget
+    stealGroup: HeadBedsheet
 
 - type: entity
   id: BedsheetCE
@@ -73,17 +77,21 @@
     state: sheetce
   - type: Clothing
     sprite: Clothing/Neck/Bedsheets/ce.rsi
+  - type: StealTarget
+    stealGroup: HeadBedsheet
 
 - type: entity
   id: BedsheetCentcom
   parent: BedsheetBase
-  name: CentCom bedsheet
+  name: CentComm bedsheet
   description: Woven with advanced nanothread for warmth as well as being very decorated, essential for all officials.
   components:
   - type: Sprite
     state: sheetcentcom
   - type: Clothing
     sprite: Clothing/Neck/Bedsheets/centcom.rsi
+  - type: StealTarget
+    stealGroup: HeadBedsheet
 
 - type: entity
   id: BedsheetClown
@@ -106,6 +114,8 @@
     state: sheetcmo
   - type: Clothing
     sprite: Clothing/Neck/Bedsheets/cmo.rsi
+  - type: StealTarget
+    stealGroup: HeadBedsheet
 
 - type: entity
   id: BedsheetCosmos
@@ -159,6 +169,8 @@
     state: sheethop
   - type: Clothing
     sprite: Clothing/Neck/Bedsheets/hop.rsi
+  - type: StealTarget
+    stealGroup: HeadBedsheet
 
 - type: entity
   id: BedsheetHOS
@@ -170,11 +182,13 @@
     state: sheethos
   - type: Clothing
     sprite: Clothing/Neck/Bedsheets/hos.rsi
+  - type: StealTarget
+    stealGroup: HeadBedsheet
 
 - type: entity
   id: BedsheetIan
   parent: BedsheetBase
-  name: Ian bedsheet
+  name: Ian's bedsheet
   components:
   - type: Sprite
     state: sheetian
@@ -243,6 +257,8 @@
     state: sheetqm
   - type: Clothing
     sprite: Clothing/Neck/Bedsheets/qm.rsi
+  - type: StealTarget
+    stealGroup: HeadBedsheet
 
 - type: entity
   id: BedsheetRainbow
@@ -264,6 +280,19 @@
     state: sheetrd
   - type: Clothing
     sprite: Clothing/Neck/Bedsheets/rd.rsi
+  - type: StealTarget
+    stealGroup: HeadBedsheet
+
+- type: entity
+  id: BedsheetBrigmedic
+  parent: BedsheetBase
+  name: brigmedic's bedsheet
+  description: Not worse than cotton.
+  components:
+  - type: Sprite
+    state: sheetbrigmedic
+  - type: Clothing
+    sprite: Clothing/Neck/Bedsheets/brigmedic.rsi
 
 - type: entity
   id: BedsheetRed
@@ -278,7 +307,7 @@
 - type: entity
   id: BedsheetSyndie
   parent: BedsheetBase
-  name: Syndie bedsheet
+  name: syndicate bedsheet
   description: It has a syndicate emblem and it has an aura of evil.
   components:
   - type: Sprite
@@ -301,6 +330,10 @@
   parent: BedsheetBase
   name: white bedsheet
   components:
+  - type: Butcherable
+    spawned:
+    - id: ClothingOuterGhostSheet #ghostly!
+      amount: 1
   - type: Sprite
     state: sheetwhite
   - type: Clothing

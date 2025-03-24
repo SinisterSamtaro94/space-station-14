@@ -16,10 +16,13 @@ public sealed partial class ChannelFilterPopup : Popup
         ChatChannel.Whisper,
         ChatChannel.Emotes,
         ChatChannel.Radio,
+        ChatChannel.Notifications,
         ChatChannel.LOOC,
         ChatChannel.OOC,
         ChatChannel.Dead,
         ChatChannel.Admin,
+        ChatChannel.AdminAlert,
+        ChatChannel.AdminChat,
         ChatChannel.Server
     };
 

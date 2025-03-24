@@ -2,49 +2,48 @@
 using Robust.Client.GameObjects;
 using Robust.Client.Graphics;
 using Robust.Shared.Prototypes;
+using Content.Shared.Inventory;
 
 namespace Content.Client.Chat.TypingIndicator;
 
 public sealed class TypingIndicatorVisualizerSystem : VisualizerSystem<TypingIndicatorComponent>
 {
     [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
+    [Dependency] private readonly InventorySystem _inventory = default!;
 
-    public override void Initialize()
-    {
-        base.Initialize();
-        SubscribeLocalEvent<TypingIndicatorComponent, ComponentInit>(OnInit);
-    }
-
-    private void OnInit(EntityUid uid, TypingIndicatorComponent component, ComponentInit args)
-    {
-        if (!TryComp(uid, out SpriteComponent? sprite))
-            return;
-
-        if (!_prototypeManager.TryIndex<TypingIndicatorPrototype>(component.Prototype, out var proto))
-        {
-            Logger.Error($"Unknown typing indicator id: {component.Prototype}");
-            return;
-        }
-
-        var layer = sprite.LayerMapReserveBlank(TypingIndicatorLayers.Base);
-        sprite.LayerSetRSI(layer, proto.SpritePath);
-        sprite.LayerSetState(layer, proto.TypingState);
-        sprite.LayerSetShader(layer, proto.Shader);
-        sprite.LayerSetOffset(layer, proto.Offset);
-        sprite.LayerSetVisible(layer, false);
-    }
 
     protected override void OnAppearanceChange(EntityUid uid, TypingIndicatorComponent component, ref AppearanceChangeEvent args)
     {
-        base.OnAppearanceChange(uid, component, ref args);
-
-        if (!TryComp(uid, out SpriteComponent? sprite))
+        if (args.Sprite == null)
             return;
 
-        args.Component.TryGetData(TypingIndicatorVisuals.IsTyping, out bool isTyping);
-        if (sprite.LayerMapTryGet(TypingIndicatorLayers.Base, out var layer))
+        var currentTypingIndicator = component.TypingIndicatorPrototype;
+
+        var evt = new BeforeShowTypingIndicatorEvent();
+
+        if (TryComp<InventoryComponent>(uid, out var inventoryComp))
+            _inventory.RelayEvent((uid, inventoryComp), ref evt);
+
+        var overrideIndicator = evt.GetMostRecentIndicator();
+
+        if (overrideIndicator != null)
+            currentTypingIndicator = overrideIndicator.Value;
+
+        if (!_prototypeManager.TryIndex(currentTypingIndicator, out var proto))
         {
-            sprite.LayerSetVisible(layer, isTyping);
+            Log.Error($"Unknown typing indicator id: {component.TypingIndicatorPrototype}");
+            return;
         }
+
+        AppearanceSystem.TryGetData<bool>(uid, TypingIndicatorVisuals.IsTyping, out var isTyping, args.Component);
+        var layerExists = args.Sprite.LayerMapTryGet(TypingIndicatorLayers.Base, out var layer);
+        if (!layerExists)
+            layer = args.Sprite.LayerMapReserveBlank(TypingIndicatorLayers.Base);
+
+        args.Sprite.LayerSetRSI(layer, proto.SpritePath);
+        args.Sprite.LayerSetState(layer, proto.TypingState);
+        args.Sprite.LayerSetShader(layer, proto.Shader);
+        args.Sprite.LayerSetOffset(layer, proto.Offset);
+        args.Sprite.LayerSetVisible(layer, isTyping);
     }
 }

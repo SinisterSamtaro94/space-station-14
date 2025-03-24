@@ -1,69 +1,68 @@
 using Content.Shared.StepTrigger.Systems;
+using Content.Shared.Whitelist;
 using Robust.Shared.GameStates;
-using Robust.Shared.Serialization;
 
 namespace Content.Shared.StepTrigger.Components;
 
-[RegisterComponent]
-[NetworkedComponent]
+[RegisterComponent, NetworkedComponent, AutoGenerateComponentState(true)]
 [Access(typeof(StepTriggerSystem))]
-public sealed class StepTriggerComponent : Component
+public sealed partial class StepTriggerComponent : Component
 {
+    public const float DefaultRequiredTriggeredSpeed = 3.5f;
     /// <summary>
     ///     List of entities that are currently colliding with the entity.
     /// </summary>
-    [ViewVariables]
-    public readonly HashSet<EntityUid> Colliding = new();
+    [ViewVariables, AutoNetworkedField]
+    public HashSet<EntityUid> Colliding = new();
 
     /// <summary>
     ///     The list of entities that are standing on this entity,
     /// which shouldn't be able to trigger it again until stepping off.
     /// </summary>
-    [ViewVariables]
-    public readonly HashSet<EntityUid> CurrentlySteppedOn = new();
+    [ViewVariables, AutoNetworkedField]
+    public HashSet<EntityUid> CurrentlySteppedOn = new();
 
     /// <summary>
     ///     Whether or not this component will currently try to trigger for entities.
     /// </summary>
-    [DataField("active")]
-    public bool Active { get; set; } = true;
+    [DataField, AutoNetworkedField]
+    public bool Active = true;
 
     /// <summary>
     ///     Ratio of shape intersection for a trigger to occur.
     /// </summary>
-    [DataField("intersectRatio")]
-    public float IntersectRatio { get; set; } = 0.3f;
+    [DataField, AutoNetworkedField]
+    public float IntersectRatio = 0.3f;
 
     /// <summary>
     ///     Entities will only be triggered if their speed exceeds this limit.
     /// </summary>
-    [DataField("requiredTriggeredSpeed")]
-    public float RequiredTriggerSpeed { get; set; } = 3.5f;
+    [DataField, AutoNetworkedField]
+    public float RequiredTriggeredSpeed = DefaultRequiredTriggeredSpeed;
+
+    /// <summary>
+    ///     If any entities occupy the blacklist on the same tile then steptrigger won't work.
+    /// </summary>
+    [DataField]
+    public EntityWhitelist? Blacklist;
+
+    /// <summary>
+    ///     If this is true, steptrigger will still occur on entities that are in air / weightless. They do not
+    ///     by default.
+    /// </summary>
+    [DataField, AutoNetworkedField]
+    public bool IgnoreWeightless;
+
+    /// <summary>
+    /// Does this have separate "StepOn" and "StepOff" triggers.
+    /// </summary>
+    [DataField, AutoNetworkedField]
+    public bool StepOn = false;
 }
 
 [RegisterComponent]
 [Access(typeof(StepTriggerSystem))]
-public sealed class StepTriggerActiveComponent : Component
+public sealed partial class StepTriggerActiveComponent : Component
 {
 
 }
-
-[Serializable, NetSerializable]
-public sealed class StepTriggerComponentState : ComponentState
-{
-    public float IntersectRatio { get; }
-    public float RequiredTriggerSpeed { get; }
-    public readonly HashSet<EntityUid> CurrentlySteppedOn;
-    public readonly HashSet<EntityUid> Colliding;
-    public readonly bool Active;
-
-    public StepTriggerComponentState(float intersectRatio, HashSet<EntityUid> currentlySteppedOn, HashSet<EntityUid> colliding, float requiredTriggerSpeed, bool active)
-    {
-        IntersectRatio = intersectRatio;
-        CurrentlySteppedOn = currentlySteppedOn;
-        RequiredTriggerSpeed = requiredTriggerSpeed;
-        Active = active;
-        Colliding = colliding;
-    }
-}
-

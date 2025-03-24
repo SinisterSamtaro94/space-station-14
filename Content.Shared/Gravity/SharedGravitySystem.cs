@@ -1,19 +1,23 @@
 using Content.Shared.Alert;
-using Content.Shared.Clothing;
 using Content.Shared.Inventory;
 using Content.Shared.Movement.Components;
 using Robust.Shared.GameStates;
-using Robust.Shared.Map;
 using Robust.Shared.Physics;
 using Robust.Shared.Physics.Components;
 using Robust.Shared.Serialization;
+using Robust.Shared.Timing;
 
 namespace Content.Shared.Gravity
 {
-    public abstract class SharedGravitySystem : EntitySystem
+    public abstract partial class SharedGravitySystem : EntitySystem
     {
+        [Dependency] protected readonly IGameTiming Timing = default!;
         [Dependency] private readonly AlertsSystem _alerts = default!;
-        [Dependency] private readonly InventorySystem _inventory = default!;
+
+        [ValidatePrototypeId<AlertPrototype>]
+        public const string WeightlessAlert = "Weightless";
+
+        private EntityQuery<GravityComponent> _gravityQuery;
 
         public bool IsWeightless(EntityUid uid, PhysicsComponent? body = null, TransformComponent? xform = null)
         {
@@ -25,45 +29,73 @@ namespace Content.Shared.Gravity
             if (TryComp<MovementIgnoreGravityComponent>(uid, out var ignoreGravityComponent))
                 return ignoreGravityComponent.Weightless;
 
+            var ev = new IsWeightlessEvent(uid);
+            RaiseLocalEvent(uid, ref ev);
+            if (ev.Handled)
+                return ev.IsWeightless;
+
             if (!Resolve(uid, ref xform))
                 return true;
 
             // If grid / map has gravity
-            if ((TryComp<GravityComponent>(xform.GridUid, out var gravity) ||
-                 TryComp(xform.MapUid, out gravity)) && gravity.Enabled)
-            {
+            if (EntityGridOrMapHaveGravity((uid, xform)))
                 return false;
-            }
-
-            // Something holding us down
-            // If the planet has gravity component and no gravity it will still give gravity
-            // If there's no gravity comp at all (i.e. space) then they don't work.
-            if (gravity != null && _inventory.TryGetSlotEntity(uid, "shoes", out var ent))
-            {
-                if (TryComp<MagbootsComponent>(ent, out var boots) && boots.On)
-                    return false;
-            }
 
             return true;
+        }
+
+        /// <summary>
+        /// Checks if a given entity is currently standing on a grid or map that supports having gravity at all.
+        /// </summary>
+        public bool EntityOnGravitySupportingGridOrMap(Entity<TransformComponent?> entity)
+        {
+            entity.Comp ??= Transform(entity);
+
+            return _gravityQuery.HasComp(entity.Comp.GridUid) ||
+                   _gravityQuery.HasComp(entity.Comp.MapUid);
+        }
+
+
+        /// <summary>
+        /// Checks if a given entity is currently standing on a grid or map that has gravity of some kind.
+        /// </summary>
+        public bool EntityGridOrMapHaveGravity(Entity<TransformComponent?> entity)
+        {
+            entity.Comp ??= Transform(entity);
+
+            return _gravityQuery.TryComp(entity.Comp.GridUid, out var gravity) && gravity.Enabled ||
+                   _gravityQuery.TryComp(entity.Comp.MapUid, out var mapGravity) && mapGravity.Enabled;
         }
 
         public override void Initialize()
         {
             base.Initialize();
-            SubscribeLocalEvent<GridInitializeEvent>(HandleGridInitialize);
+            SubscribeLocalEvent<GridInitializeEvent>(OnGridInit);
+            SubscribeLocalEvent<AlertSyncEvent>(OnAlertsSync);
             SubscribeLocalEvent<AlertsComponent, EntParentChangedMessage>(OnAlertsParentChange);
             SubscribeLocalEvent<GravityChangedEvent>(OnGravityChange);
             SubscribeLocalEvent<GravityComponent, ComponentGetState>(OnGetState);
             SubscribeLocalEvent<GravityComponent, ComponentHandleState>(OnHandleState);
+
+            _gravityQuery = GetEntityQuery<GravityComponent>();
+        }
+
+        public override void Update(float frameTime)
+        {
+            base.Update(frameTime);
+            UpdateShake();
         }
 
         private void OnHandleState(EntityUid uid, GravityComponent component, ref ComponentHandleState args)
         {
-            if (args.Current is not GravityComponentState state) return;
+            if (args.Current is not GravityComponentState state)
+                return;
 
-            if (component.EnabledVV == state.Enabled) return;
+            if (component.EnabledVV == state.Enabled)
+                return;
             component.EnabledVV = state.Enabled;
-            RaiseLocalEvent(new GravityChangedEvent(uid, component.EnabledVV));
+            var ev = new GravityChangedEvent(uid, component.EnabledVV);
+            RaiseLocalEvent(uid, ref ev, true);
         }
 
         private void OnGetState(EntityUid uid, GravityComponent component, ref ComponentGetState args)
@@ -71,36 +103,50 @@ namespace Content.Shared.Gravity
             args.State = new GravityComponentState(component.EnabledVV);
         }
 
-        private void OnGravityChange(GravityChangedEvent ev)
+        private void OnGravityChange(ref GravityChangedEvent ev)
         {
-            foreach (var (comp, xform) in EntityQuery<AlertsComponent, TransformComponent>(true))
+            var alerts = AllEntityQuery<AlertsComponent, TransformComponent>();
+            while(alerts.MoveNext(out var uid, out _, out var xform))
             {
-                if (xform.GridUid != ev.ChangedGridIndex) continue;
+                if (xform.GridUid != ev.ChangedGridIndex)
+                    continue;
 
                 if (!ev.HasGravity)
                 {
-                    _alerts.ShowAlert(comp.Owner, AlertType.Weightless);
+                    _alerts.ShowAlert(uid, WeightlessAlert);
                 }
                 else
                 {
-                    _alerts.ClearAlert(comp.Owner, AlertType.Weightless);
+                    _alerts.ClearAlert(uid, WeightlessAlert);
                 }
+            }
+        }
+
+        private void OnAlertsSync(AlertSyncEvent ev)
+        {
+            if (IsWeightless(ev.Euid))
+            {
+                _alerts.ShowAlert(ev.Euid, WeightlessAlert);
+            }
+            else
+            {
+                _alerts.ClearAlert(ev.Euid, WeightlessAlert);
             }
         }
 
         private void OnAlertsParentChange(EntityUid uid, AlertsComponent component, ref EntParentChangedMessage args)
         {
-            if (IsWeightless(component.Owner))
+            if (IsWeightless(uid))
             {
-                _alerts.ShowAlert(uid, AlertType.Weightless);
+                _alerts.ShowAlert(uid, WeightlessAlert);
             }
             else
             {
-                _alerts.ClearAlert(uid, AlertType.Weightless);
+                _alerts.ClearAlert(uid, WeightlessAlert);
             }
         }
 
-        private void HandleGridInitialize(GridInitializeEvent ev)
+        private void OnGridInit(GridInitializeEvent ev)
         {
             EntityManager.EnsureComponent<GravityComponent>(ev.EntityUid);
         }
@@ -115,5 +161,11 @@ namespace Content.Shared.Gravity
                 Enabled = enabled;
             }
         }
+    }
+
+    [ByRefEvent]
+    public record struct IsWeightlessEvent(EntityUid Entity, bool IsWeightless = false, bool Handled = false) : IInventoryRelayEvent
+    {
+        SlotFlags IInventoryRelayEvent.TargetSlots => ~SlotFlags.POCKET;
     }
 }

@@ -14,7 +14,13 @@
             "name": "base"
         },
         {
+            "name": "bolt-open"
+        },
+        {
             "name": "mag-0"
+        },
+        {
+            "name": "suppressor"
         },
         {
             "name": "inhand-left",
@@ -24,9 +30,13 @@
             "name": "inhand-right",
             "directions": 4
         },
+        {
+            "name": "equipped-BELT",
+            "directions": 4
+        },
 		{
-			"name": "equipped-BELT",
-			"directions": 4
-		}
+            "name": "equipped-SUITSTORAGE",
+            "directions": 4
+        }
     ]
 }

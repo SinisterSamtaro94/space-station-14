@@ -1,3 +1,4 @@
+using Content.Shared.Explosion.Components;
 using Robust.Shared.GameStates;
 using Robust.Shared.Prototypes;
 
@@ -18,7 +19,7 @@ namespace Content.Shared.Payload.Components;
 ///     network message), the trigger will be forwarded to the device that this entity is installed in (if any).
 /// </remarks>
 [RegisterComponent, NetworkedComponent]
-public sealed class PayloadTriggerComponent : Component
+public sealed partial class PayloadTriggerComponent : Component
 {
     /// <summary>
     ///     If true, triggering this entity will also cause the parent of this entity to be triggered.
@@ -29,7 +30,7 @@ public sealed class PayloadTriggerComponent : Component
     ///     List of components to add or remove from an entity when this trigger is (un)installed.
     /// </summary>
     [DataField("components", serverOnly:true, readOnly: true)]
-    public readonly EntityPrototype.ComponentRegistry? Components = null;
+    public ComponentRegistry? Components = null;
 
     /// <summary>
     ///     Keeps track of what components this trigger has granted to the payload case.
@@ -41,5 +42,5 @@ public sealed class PayloadTriggerComponent : Component
     ///     responsible for adding.
     /// </remarks>
     [DataField("grantedComponents", serverOnly: true)]
-    public readonly HashSet<Type> GrantedComponents = new();
+    public HashSet<Type> GrantedComponents = new();
 }

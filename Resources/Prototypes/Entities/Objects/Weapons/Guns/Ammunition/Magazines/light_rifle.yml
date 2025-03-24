@@ -2,25 +2,25 @@
 - type: entity
   id: BaseMagazineLightRifle
   name: "magazine (.30 rifle)"
-  parent: BaseItem
+  parent: [ BaseItem, BaseSecurityContraband ]
   abstract: true
   components:
   - type: Tag
     tags:
       - MagazineLightRifle
   - type: BallisticAmmoProvider
+    mayTransfer: true
     whitelist:
       tags:
         - CartridgeLightRifle
     proto: CartridgeLightRifle
     capacity: 30
   - type: Item
-    size: 5
+    size: Small
   - type: ContainerContainer
     containers:
       ballistic-ammo: !type:Container
   - type: Sprite
-    netsync: false
     sprite: Objects/Weapons/Guns/Ammunition/Magazine/LightRifle/light_rifle_mag.rsi
     layers:
     - state: base
@@ -69,15 +69,16 @@
       map: ["enum.GunVisualLayers.Mag"]
 
 - type: entity
-  id: MagazineLightRifleHighVelocity
-  name: "magazine (.30 rifle high-velocity)"
-  parent: BaseMagazineLightRifle
+  id: MagazineLightRifleEmpty
+  name: "magazine (.30 rifle any)"
+  suffix: empty
+  parent: MagazineLightRifle
   components:
   - type: BallisticAmmoProvider
-    proto: CartridgeLightRifleHighVelocity
+    proto: null
   - type: Sprite
     layers:
-    - state: high_velocity
+    - state: base
       map: ["enum.GunVisualLayers.Base"]
     - state: mag-1
       map: ["enum.GunVisualLayers.Mag"]
@@ -97,18 +98,26 @@
       map: ["enum.GunVisualLayers.Mag"]
 
 - type: entity
-  id: MagazineLightRifleRubber
-  name: "magazine (.30 rifle rubber)"
+  id: MagazineLightRifleUranium
+  name: "magazine (.30 rifle uranium)"
   parent: BaseMagazineLightRifle
   components:
   - type: BallisticAmmoProvider
-    proto: CartridgeLightRifleRubber
+    proto: CartridgeLightRifleUranium
   - type: Sprite
     layers:
-    - state: rubber
+    - state: uranium
       map: ["enum.GunVisualLayers.Base"]
     - state: mag-1
       map: ["enum.GunVisualLayers.Mag"]
+
+- type: entity
+  id: MagazineLightRifleIncendiary
+  name: "magazine (.30 rifle incendiary)"
+  parent: MagazineLightRifle
+  components:
+  - type: BallisticAmmoProvider
+    proto: CartridgeLightRifleIncendiary
 
 - type: entity
   id: MagazineLightRifleMaxim
@@ -139,6 +148,6 @@
     sprite: Objects/Weapons/Guns/Ammunition/Magazine/LightRifle/pk_box.rsi
   - type: MagazineVisuals
     magState: mag
-    steps: 7
+    steps: 8
     zeroVisible: false
   - type: Appearance

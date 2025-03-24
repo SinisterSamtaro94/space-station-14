@@ -1,17 +1,19 @@
-﻿using Content.Shared.Follower;
+﻿using System.Numerics;
 using Content.Shared.Follower.Components;
 using Robust.Client.Animations;
 using Robust.Client.GameObjects;
 using Robust.Shared.Animations;
 using Robust.Shared.Random;
+using Robust.Shared.Timing;
 
 namespace Content.Client.Orbit;
 
 public sealed class OrbitVisualsSystem : EntitySystem
 {
     [Dependency] private readonly IRobustRandom _robustRandom = default!;
+    [Dependency] private readonly AnimationPlayerSystem _animations = default!;
+    [Dependency] private readonly IGameTiming _timing = default!;
 
-    private readonly string _orbitAnimationKey = "orbiting";
     private readonly string _orbitStopKey = "orbiting_stop";
 
     public override void Initialize()
@@ -20,11 +22,11 @@ public sealed class OrbitVisualsSystem : EntitySystem
 
         SubscribeLocalEvent<OrbitVisualsComponent, ComponentInit>(OnComponentInit);
         SubscribeLocalEvent<OrbitVisualsComponent, ComponentRemove>(OnComponentRemove);
-        SubscribeLocalEvent<OrbitVisualsComponent, AnimationCompletedEvent>(OnAnimationCompleted);
     }
 
     private void OnComponentInit(EntityUid uid, OrbitVisualsComponent component, ComponentInit args)
     {
+        _robustRandom.SetSeed((int)_timing.CurTime.TotalMilliseconds);
         component.OrbitDistance =
             _robustRandom.NextFloat(0.75f * component.OrbitDistance, 1.25f * component.OrbitDistance);
 
@@ -36,16 +38,11 @@ public sealed class OrbitVisualsSystem : EntitySystem
             sprite.DirectionOverride = Direction.South;
         }
 
-        var animationPlayer = EntityManager.EnsureComponent<AnimationPlayerComponent>(uid);
-        if (animationPlayer.HasRunningAnimation(_orbitAnimationKey))
-            return;
-
-        if (animationPlayer.HasRunningAnimation(_orbitStopKey))
+        var animationPlayer = EnsureComp<AnimationPlayerComponent>(uid);
+        if (_animations.HasRunningAnimation(uid, animationPlayer, _orbitStopKey))
         {
-            animationPlayer.Stop(_orbitStopKey);
+            _animations.Stop((uid, animationPlayer), _orbitStopKey);
         }
-
-        animationPlayer.Play(GetOrbitAnimation(component), _orbitAnimationKey);
     }
 
     private void OnComponentRemove(EntityUid uid, OrbitVisualsComponent component, ComponentRemove args)
@@ -55,15 +52,10 @@ public sealed class OrbitVisualsSystem : EntitySystem
 
         sprite.EnableDirectionOverride = false;
 
-        var animationPlayer = EntityManager.EnsureComponent<AnimationPlayerComponent>(uid);
-        if (animationPlayer.HasRunningAnimation(_orbitAnimationKey))
+        var animationPlayer = EnsureComp<AnimationPlayerComponent>(uid);
+        if (!_animations.HasRunningAnimation(uid, animationPlayer, _orbitStopKey))
         {
-            animationPlayer.Stop(_orbitAnimationKey);
-        }
-
-        if (!animationPlayer.HasRunningAnimation(_orbitStopKey))
-        {
-            animationPlayer.Play(GetStopAnimation(component, sprite), _orbitStopKey);
+            _animations.Play((uid, animationPlayer), GetStopAnimation(component, sprite), _orbitStopKey);
         }
     }
 
@@ -71,9 +63,10 @@ public sealed class OrbitVisualsSystem : EntitySystem
     {
         base.FrameUpdate(frameTime);
 
-        foreach (var (orbit, sprite) in EntityManager.EntityQuery<OrbitVisualsComponent, ISpriteComponent>())
+        foreach (var (orbit, sprite) in EntityManager.EntityQuery<OrbitVisualsComponent, SpriteComponent>())
         {
-            var angle = new Angle(Math.PI * 2 * orbit.Orbit);
+            var progress = (float)(_timing.CurTime.TotalSeconds / orbit.OrbitLength) % 1;
+            var angle = new Angle(Math.PI * 2 * progress);
             var vec = angle.RotateVec(new Vector2(orbit.OrbitDistance, 0));
 
             sprite.Rotation = angle;
@@ -81,40 +74,7 @@ public sealed class OrbitVisualsSystem : EntitySystem
         }
     }
 
-    private void OnAnimationCompleted(EntityUid uid, OrbitVisualsComponent component, AnimationCompletedEvent args)
-    {
-        if (args.Key == _orbitAnimationKey)
-        {
-            if(EntityManager.TryGetComponent(uid, out AnimationPlayerComponent? animationPlayer))
-                animationPlayer.Play(GetOrbitAnimation(component), _orbitAnimationKey);
-        }
-    }
-
-    private Animation GetOrbitAnimation(OrbitVisualsComponent component)
-    {
-        var length = component.OrbitLength;
-
-        return new Animation()
-        {
-            Length = TimeSpan.FromSeconds(length),
-            AnimationTracks =
-            {
-                new AnimationTrackComponentProperty()
-                {
-                    ComponentType = typeof(OrbitVisualsComponent),
-                    Property = nameof(OrbitVisualsComponent.Orbit),
-                    KeyFrames =
-                    {
-                        new AnimationTrackProperty.KeyFrame(0.0f, 0f),
-                        new AnimationTrackProperty.KeyFrame(1.0f, length),
-                    },
-                    InterpolationMode = AnimationInterpolationMode.Linear
-                }
-            }
-        };
-    }
-
-    private Animation GetStopAnimation(OrbitVisualsComponent component, ISpriteComponent sprite)
+    private Animation GetStopAnimation(OrbitVisualsComponent component, SpriteComponent sprite)
     {
         var length = component.OrbitStopLength;
 
@@ -125,8 +85,8 @@ public sealed class OrbitVisualsSystem : EntitySystem
             {
                 new AnimationTrackComponentProperty()
                 {
-                    ComponentType = typeof(ISpriteComponent),
-                    Property = nameof(ISpriteComponent.Offset),
+                    ComponentType = typeof(SpriteComponent),
+                    Property = nameof(SpriteComponent.Offset),
                     KeyFrames =
                     {
                         new AnimationTrackProperty.KeyFrame(sprite.Offset, 0f),
@@ -136,8 +96,8 @@ public sealed class OrbitVisualsSystem : EntitySystem
                 },
                 new AnimationTrackComponentProperty()
                 {
-                    ComponentType = typeof(ISpriteComponent),
-                    Property = nameof(ISpriteComponent.Rotation),
+                    ComponentType = typeof(SpriteComponent),
+                    Property = nameof(SpriteComponent.Rotation),
                     KeyFrames =
                     {
                         new AnimationTrackProperty.KeyFrame(sprite.Rotation.Reduced(), 0f),

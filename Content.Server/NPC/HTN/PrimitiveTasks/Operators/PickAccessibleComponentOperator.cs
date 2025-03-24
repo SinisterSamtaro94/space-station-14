@@ -3,14 +3,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Content.Server.NPC.Pathfinding;
 using Robust.Shared.Map;
-using Robust.Shared.Random;
 
 namespace Content.Server.NPC.HTN.PrimitiveTasks.Operators;
 
 /// <summary>
 /// Picks a nearby component that is accessible.
 /// </summary>
-public sealed class PickAccessibleComponentOperator : HTNOperator
+public sealed partial class PickAccessibleComponentOperator : HTNOperator
 {
     [Dependency] private readonly IComponentFactory _factory = default!;
     [Dependency] private readonly IEntityManager _entManager = default!;
@@ -20,16 +19,19 @@ public sealed class PickAccessibleComponentOperator : HTNOperator
     [DataField("rangeKey", required: true)]
     public string RangeKey = string.Empty;
 
-    [ViewVariables, DataField("targetKey", required: true)]
+    [DataField("targetKey", required: true)]
     public string TargetKey = string.Empty;
 
-    [ViewVariables, DataField("component", required: true)]
+    [DataField("target")]
+    public string TargetEntity = "Target";
+
+    [DataField("component", required: true)]
     public string Component = string.Empty;
 
     /// <summary>
     /// Where the pathfinding result will be stored (if applicable). This gets removed after execution.
     /// </summary>
-    [ViewVariables, DataField("pathfindKey")]
+    [DataField("pathfindKey")]
     public string PathfindKey = NPCBlackboard.PathfindKey;
 
     public override void Initialize(IEntitySystemManager sysManager)
@@ -49,17 +51,17 @@ public sealed class PickAccessibleComponentOperator : HTNOperator
             return (false, null);
         }
 
-        var range = blackboard.GetValueOrDefault<float>(RangeKey);
+        var range = blackboard.GetValueOrDefault<float>(RangeKey, _entManager);
         var owner = blackboard.GetValue<EntityUid>(NPCBlackboard.Owner);
 
-        if (!blackboard.TryGetValue<EntityCoordinates>(NPCBlackboard.OwnerCoordinates, out var coordinates))
+        if (!blackboard.TryGetValue<EntityCoordinates>(NPCBlackboard.OwnerCoordinates, out var coordinates, _entManager))
         {
             return (false, null);
         }
 
         var compType = registration.Type;
         var query = _entManager.GetEntityQuery(compType);
-        var targets = new List<Component>();
+        var targets = new List<EntityUid>();
 
         // TODO: Need to get ones that are accessible.
         // TODO: Look at unreal HTN to see repeatable ones maybe?
@@ -69,7 +71,7 @@ public sealed class PickAccessibleComponentOperator : HTNOperator
             if (entity == owner || !query.TryGetComponent(entity, out var comp))
                 continue;
 
-            targets.Add(comp);
+            targets.Add(entity);
         }
 
         if (targets.Count == 0)
@@ -77,17 +79,12 @@ public sealed class PickAccessibleComponentOperator : HTNOperator
             return (false, null);
         }
 
-        blackboard.TryGetValue<float>(RangeKey, out var maxRange);
-
-        if (maxRange == 0f)
-            maxRange = 7f;
-
-        while (targets.Count > 0)
+        foreach (var target in targets)
         {
-            var path = await _pathfinding.GetRandomPath(
+            var path = await _pathfinding.GetPath(
                 owner,
-                1.4f,
-                maxRange,
+                target,
+                1f,
                 cancelToken,
                 flags: _pathfinding.GetFlags(blackboard));
 
@@ -96,12 +93,13 @@ public sealed class PickAccessibleComponentOperator : HTNOperator
                 return (false, null);
             }
 
-            var target = path.Path.Last().Coordinates;
+            var xform = _entManager.GetComponent<TransformComponent>(target);
 
             return (true, new Dictionary<string, object>()
             {
-                { TargetKey, target },
-                { PathfindKey, path}
+                { TargetEntity, target },
+                { TargetKey, xform.Coordinates },
+                { PathfindKey, path }
             });
         }
 

@@ -23,9 +23,11 @@
         - !type:SetAnchor
           value: true
         - !type:SnapToGrid
-          offset: Center
       edges:
         - to: item
           steps:
             - tool: Prying
               doAfter: 3
+          completed:
+            - !type:SetAnchor
+              value: false

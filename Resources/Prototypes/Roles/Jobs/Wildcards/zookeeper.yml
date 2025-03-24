@@ -1,23 +1,27 @@
 - type: job
   id: Zookeeper
   name: job-name-zookeeper
+  description: job-description-zookeeper
   playTimeTracker: JobZookeeper
   startingGear: ZookeeperGear
-  icon: "Zookeeper"
+  icon: "JobIconZookeeper"
   supervisors: job-supervisors-hop
   access:
   - Service
   - Maintenance
+  special:
+  - !type:GiveItemOnHolidaySpecial
+    holiday: MonkeyDay
+    prototype: MonkeyCubeBox
 
 - type: startingGear
   id: ZookeeperGear
   equipment:
     jumpsuit: ClothingUniformJumpsuitSafari
-    back: ClothingBackpackFilled
     head: ClothingHeadSafari
     shoes: ClothingShoesColorWhite
     id: ZookeeperPDA
     ears: ClothingHeadsetService
-  innerclothingskirt: ClothingUniformJumpsuitSafari
-  satchel: ClothingBackpackSatchelFilled
-  duffelbag: ClothingBackpackDuffelFilled
+  #storage:
+    #back:
+    #- Stuff

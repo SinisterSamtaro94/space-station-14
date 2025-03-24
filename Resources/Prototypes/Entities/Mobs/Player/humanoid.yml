@@ -1,42 +1,102 @@
-# Random humanoids
+## Random humanoids
+
+- type: randomHumanoidSettings
+  id: EventHumanoid
+  components:
+    - type: RandomHumanoidAppearance
+      randomizeName: false
+    - type: GhostTakeoverAvailable
+
+- type: randomHumanoidSettings
+  id: EventHumanoidMindShielded
+  parent: EventHumanoid
+  components:
+    - type: MindShield
+    - type: AntagImmune
+
+## Death Squad
+
+- type: entity
+  id: RandomHumanoidSpawnerDeathSquad
+  name: Death Squad Agent
+  suffix: ERTRole, Death Squad
+  components:
+    - type: Sprite
+      sprite: Clothing/OuterClothing/Hardsuits/deathsquad.rsi
+      state: icon
+    - type: RandomMetadata
+      nameSegments:
+        - NamesMilitaryFirstLeader
+        - NamesMilitaryLast
+    - type: RandomHumanoidSpawner
+      settings: DeathSquad
+
+- type: randomHumanoidSettings
+  id: DeathSquad
+  parent: EventHumanoidMindShielded
+  randomizeName: false
+  components:
+    - type: GhostRole
+      name: ghost-role-information-Death-Squad-name
+      description: ghost-role-information-Death-Squad-description
+      rules: ghost-role-information-Death-Squad-rules
+      raffle:
+        settings: short
+      mindRoles:
+      - MindRoleGhostRoleFamiliar
+    - type: Loadout
+      prototypes: [ DeathSquadGear ]
+      roleLoadout: [ RoleSurvivalEVA ]
+    - type: RandomMetadata
+      nameSegments:
+        - NamesMilitaryFirstLeader
+        - NamesMilitaryLast
+
 
 ## ERT Leader
 
 - type: entity
   id: RandomHumanoidSpawnerERTLeader
   name: ERT leader
+  suffix: ERTRole, Basic
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: ertleader
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitaryLeader
-      - names_last
+      - NamesMilitaryFirstLeader
+      - NamesMilitaryLast
     - type: RandomHumanoidSpawner
       settings: ERTLeader
 
 - type: randomHumanoidSettings
   id: ERTLeader
+  parent: EventHumanoidMindShielded
   randomizeName: false
   components:
-    - type: GhostTakeoverAvailable
-      name: ERT Leader
-      description: Lead a team of specialists to resolve the stations issues.
+    - type: GhostRole
+      name: ghost-role-information-ert-leader-name
+      description: ghost-role-information-ert-leader-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTLeader
     - type: Loadout
       prototypes: [ ERTLeaderGear ]
+      roleLoadout: [ RoleSurvivalExtended ]
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitaryLeader
-      - names_last
+      - NamesMilitaryFirstLeader
+      - NamesMilitaryLast
 
 - type: entity
   id: RandomHumanoidSpawnerERTLeaderEVA
   parent: RandomHumanoidSpawnerERTLeader
   name: ERT leader
-  suffix: EVA
+  suffix: ERTRole, Armored EVA
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: ertleadereva
     - type: RandomHumanoidSpawner
@@ -46,11 +106,105 @@
   id: ERTLeaderEVA
   parent: ERTLeader
   components:
-    - type: GhostTakeoverAvailable
-      name: ERT Leader
-      description: Lead a team of specialists to resolve the stations issues.
+    - type: GhostRole
+      name: ghost-role-information-ert-leader-name
+      description: ghost-role-information-ert-leader-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTLeader
     - type: Loadout
       prototypes: [ ERTLeaderGearEVA ]
+      roleLoadout: [ RoleSurvivalEVA ]
+
+- type: entity
+  id: RandomHumanoidSpawnerERTLeaderEVALecter
+  parent: RandomHumanoidSpawnerERTLeaderEVA
+  suffix: ERTRole, Lecter, EVA
+  components:
+    - type: RandomHumanoidSpawner
+      settings: ERTLeaderEVALecter
+
+- type: randomHumanoidSettings
+  id: ERTLeaderEVALecter
+  parent: ERTLeaderEVA
+  components:
+    - type: GhostRole
+      name: ghost-role-information-ert-leader-name
+      description: ghost-role-information-ert-leader-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTLeader
+    - type: Loadout
+      prototypes: [ ERTLeaderGearEVALecter ]
+      roleLoadout: [ RoleSurvivalEVA ]
+
+## ERT Chaplain
+
+- type: entity
+  id: RandomHumanoidSpawnerERTChaplain
+  parent: RandomHumanoidSpawnerERTLeader
+  name: ERT chaplain
+  suffix: ERTRole, Basic
+  components:
+    - type: Sprite
+      sprite: Markers/jobs.rsi
+      state: chaplain #needs an ERT variant once a good suit it made.
+    - type: RandomMetadata
+      nameSegments:
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
+    - type: RandomHumanoidSpawner
+      settings: ERTChaplain
+
+- type: randomHumanoidSettings
+  id: ERTChaplain
+  parent: ERTLeader
+  components:
+    - type: BibleUser
+    - type: GhostRole
+      name: ghost-role-information-ert-chaplain-name
+      description: ghost-role-information-ert-chaplain-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTChaplain
+    - type: RandomMetadata
+      nameSegments:
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
+    - type: Loadout
+      prototypes: [ ERTChaplainGear ]
+      roleLoadout: [ RoleSurvivalExtended ]
+
+- type: entity
+  id: RandomHumanoidSpawnerERTChaplainEVA
+  parent: RandomHumanoidSpawnerERTChaplain
+  name: ERT chaplain
+  suffix: ERTRole, Enviro EVA
+  components:
+    - type: Sprite
+      sprite: Markers/jobs.rsi
+      state: chaplain #needs an ERT variant once a good suit it made.
+    - type: RandomHumanoidSpawner
+      settings: ERTChaplainEVA
+
+- type: randomHumanoidSettings
+  id: ERTChaplainEVA
+  parent: ERTChaplain
+  components:
+    - type: GhostRole
+      name: ghost-role-information-ert-chaplain-name
+      description: ghost-role-information-ert-chaplain-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTChaplain
+    - type: Loadout
+      prototypes: [ ERTChaplainGearEVA ]
+      roleLoadout: [ RoleSurvivalEVA ]
+    - type: BibleUser
 
 ## ERT Janitor
 
@@ -58,14 +212,15 @@
   id: RandomHumanoidSpawnerERTJanitor
   parent: RandomHumanoidSpawnerERTLeader
   name: ERT janitor
+  suffix: ERTRole, Basic
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: ertjanitor
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitary
-      - names_last
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
     - type: RandomHumanoidSpawner
       settings: ERTJanitor
 
@@ -73,23 +228,28 @@
   id: ERTJanitor
   parent: ERTLeader
   components:
-    - type: GhostTakeoverAvailable
-      name: ERT Janitor
-      description: Assist with custodial efforts to resolve the stations issues.
+    - type: GhostRole
+      name: ghost-role-information-ert-janitor-name
+      description: ghost-role-information-ert-janitor-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTJanitor
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitary
-      - names_last
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
     - type: Loadout
       prototypes: [ ERTJanitorGear ]
+      roleLoadout: [ RoleSurvivalExtended ]
 
 - type: entity
   id: RandomHumanoidSpawnerERTJanitorEVA
   parent: RandomHumanoidSpawnerERTJanitor
   name: ERT janitor
-  suffix: EVA
+  suffix: ERTRole, Enviro EVA
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: ertjanitoreva
     - type: RandomHumanoidSpawner
@@ -99,11 +259,16 @@
   id: ERTJanitorEVA
   parent: ERTJanitor
   components:
-    - type: GhostTakeoverAvailable
-      name: ERT Janitor
-      description: Assist with custodial efforts to resolve the stations issues.
+    - type: GhostRole
+      name: ghost-role-information-ert-janitor-name
+      description: ghost-role-information-ert-janitor-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTJanitor
     - type: Loadout
       prototypes: [ ERTJanitorGearEVA ]
+      roleLoadout: [ RoleSurvivalEVA ]
 
 ## ERT Engineer
 
@@ -111,14 +276,15 @@
   id: RandomHumanoidSpawnerERTEngineer
   parent: RandomHumanoidSpawnerERTLeader
   name: ERT engineer
+  suffix: ERTRole, Basic
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: ertengineer
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitary
-      - names_last
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
     - type: RandomHumanoidSpawner
       settings: ERTEngineer
 
@@ -126,23 +292,28 @@
   id: ERTEngineer
   parent: ERTLeader
   components:
-    - type: GhostTakeoverAvailable
-      name: ERT Engineer
-      description: Assist with engineering efforts to resolve the stations issues.
+    - type: GhostRole
+      name: ghost-role-information-ert-engineer-name
+      description: ghost-role-information-ert-engineer-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTEngineer
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitary
-      - names_last
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
     - type: Loadout
       prototypes: [ ERTEngineerGear ]
+      roleLoadout: [ RoleSurvivalExtended ]
 
 - type: entity
   id: RandomHumanoidSpawnerERTEngineerEVA
   parent: RandomHumanoidSpawnerERTEngineer
   name: ERT engineer
-  suffix: EVA
+  suffix: ERTRole, Enviro EVA
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: ertengineereva
     - type: RandomHumanoidSpawner
@@ -152,11 +323,16 @@
   id: ERTEngineerEVA
   parent: ERTEngineer
   components:
-    - type: GhostTakeoverAvailable
-      name: ERT Engineer
-      description: Assist with engineering efforts to resolve the stations issues.
+    - type: GhostRole
+      name: ghost-role-information-ert-engineer-name
+      description: ghost-role-information-ert-engineer-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTEngineer
     - type: Loadout
       prototypes: [ ERTEngineerGearEVA ]
+      roleLoadout: [ RoleSurvivalEVA ]
 
 ## ERT Security
 
@@ -164,14 +340,15 @@
   id: RandomHumanoidSpawnerERTSecurity
   parent: RandomHumanoidSpawnerERTLeader
   name: ERT security
+  suffix: ERTRole, Basic
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: ertsecurity
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitary
-      - names_last
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
     - type: RandomHumanoidSpawner
       settings: ERTSecurity
 
@@ -179,23 +356,28 @@
   id: ERTSecurity
   parent: ERTLeader
   components:
-    - type: GhostTakeoverAvailable
-      name: ERT Security
-      description: Assist with security efforts to resolve the stations issues.
+    - type: GhostRole
+      name: ghost-role-information-ert-security-name
+      description: ghost-role-information-ert-security-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTSecurity
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitary
-      - names_last
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
     - type: Loadout
       prototypes: [ ERTSecurityGear ]
+      roleLoadout: [ RoleSurvivalExtended ]
 
 - type: entity
   id: RandomHumanoidSpawnerERTSecurityEVA
   parent: RandomHumanoidSpawnerERTSecurity
   name: ERT security
-  suffix: EVA
+  suffix: ERTRole, Armored EVA
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: ertsecurityeva
     - type: RandomHumanoidSpawner
@@ -205,11 +387,39 @@
   id: ERTSecurityEVA
   parent: ERTSecurity
   components:
-    - type: GhostTakeoverAvailable
-      name: ERT Security
-      description: Assist with security efforts to resolve the stations issues.
+    - type: GhostRole
+      name: ghost-role-information-ert-security-name
+      description: ghost-role-information-ert-security-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTSecurity
     - type: Loadout
       prototypes: [ ERTSecurityGearEVA ]
+      roleLoadout: [ RoleSurvivalEVA ]
+
+- type: entity
+  id: RandomHumanoidSpawnerERTSecurityEVALecter
+  parent: RandomHumanoidSpawnerERTSecurityEVA
+  suffix: ERTRole, Lecter, EVA
+  components:
+    - type: RandomHumanoidSpawner
+      settings: ERTSecurityEVALecter
+
+- type: randomHumanoidSettings
+  id: ERTSecurityEVALecter
+  parent: ERTSecurityEVA
+  components:
+    - type: GhostRole
+      name: ghost-role-information-ert-security-name
+      description: ghost-role-information-ert-security-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTSecurity
+    - type: Loadout
+      prototypes: [ ERTSecurityGearEVALecter ]
+      roleLoadout: [ RoleSurvivalEVA ]
 
 ## ERT Medic
 
@@ -217,14 +427,15 @@
   id: RandomHumanoidSpawnerERTMedical
   parent: RandomHumanoidSpawnerERTLeader
   name: ERT medic
+  suffix: ERTRole, Basic
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: ertmedical
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitary
-      - names_last
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
     - type: RandomHumanoidSpawner
       settings: ERTMedical
 
@@ -232,23 +443,28 @@
   id: ERTMedical
   parent: ERTLeader
   components:
-    - type: GhostTakeoverAvailable
-      name: ERT Medical
-      description: Assist with medicaling efforts to resolve the stations issues.
+    - type: GhostRole
+      name: ghost-role-information-ert-medical-name
+      description: ghost-role-information-ert-medical-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTMedical
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitary
-      - names_last
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
     - type: Loadout
       prototypes: [ ERTMedicalGear ]
+      roleLoadout: [ RoleSurvivalExtended ]
 
 - type: entity
   id: RandomHumanoidSpawnerERTMedicalEVA
   parent: RandomHumanoidSpawnerERTMedical
   name: ERT medic
-  suffix: EVA
+  suffix: ERTRole, Armored EVA
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: ertmedicaleva
     - type: RandomHumanoidSpawner
@@ -258,40 +474,55 @@
   id: ERTMedicalEVA
   parent: ERTMedical
   components:
-    - type: GhostTakeoverAvailable
-      name: ERT Medical
-      description: Assist with medicaling efforts to resolve the stations issues.
+    - type: GhostRole
+      name: ghost-role-information-ert-medical-name
+      description: ghost-role-information-ert-medical-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
+      job: ERTMedical
     - type: Loadout
       prototypes: [ ERTMedicalGearEVA ]
+      roleLoadout: [ RoleSurvivalEVA ]
 
 ## CBURN
 
 - type: entity
   id: RandomHumanoidSpawnerCBURNUnit
   name: CBURN Agent
+  suffix: ERTRole
   components:
+    - type: Sprite
+      sprite: Markers/jobs.rsi
+      state: cburn
     - type: RandomHumanoidSpawner
       settings: CBURNAgent
 
 - type: randomHumanoidSettings
   id: CBURNAgent
+  parent: EventHumanoidMindShielded
   components:
     - type: Loadout
       prototypes: [CBURNGear]
-    - type: GhostTakeoverAvailable
-      name: CBURN Agent
-      description: A highly trained CentCom agent, capable of dealing with various threats.
+      roleLoadout: [ RoleSurvivalEVA ]
+    - type: GhostRole
+      name: ghost-role-information-cburn-agent-name
+      description: ghost-role-information-cburn-agent-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: short
     - type: RandomMetadata
       nameSegments:
-      - NamesFirstMilitary
-      - names_last
+      - NamesMilitaryFirst
+      - NamesMilitaryLast
+
 ## Central Command
 
 - type: entity
-  name: CentCom official
+  name: CentComm official
   id: RandomHumanoidSpawnerCentcomOfficial
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Markers/jobs.rsi
       state: centcom
     - type: RandomHumanoidSpawner
@@ -299,38 +530,46 @@
 
 - type: randomHumanoidSettings
   id: CentcomOfficial
+  parent: EventHumanoidMindShielded
   components:
-    - type: GhostTakeoverAvailable
-      name: CentCom official
-      description: Inspect the station, jot down performance reviews for heads of staff, bug the Captain.
+    - type: GhostRole
+      name: ghost-role-information-centcom-official-name
+      description: ghost-role-information-centcom-official-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: default
     - type: Loadout
       prototypes: [ CentcomGear ]
+      roleLoadout: [ RoleSurvivalStandard ]
 
 ## Syndicate
 
 - type: entity
   id: RandomHumanoidSpawnerSyndicateAgent
-  name: Syndicate Agent
+  name: syndicate agent
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Mobs/Species/Human/parts.rsi
       state: full
     - type: RandomMetadata
-      nameSegments: [ names_death_commando ]
+      nameSegments: [ NamesDeathCommando ]
     - type: RandomHumanoidSpawner
       settings: SyndicateAgent
 
 - type: randomHumanoidSettings
   id: SyndicateAgent
   components:
+    - type: RandomHumanoidAppearance
+      randomizeName: false
     - type: Loadout
       prototypes: [SyndicateOperativeGearExtremelyBasic]
+      roleLoadout: [ RoleSurvivalSyndicate ]
 
 - type: entity
   id: RandomHumanoidSpawnerNukeOp
   name: Nuclear Operative
   components:
-    - type: Icon
+    - type: Sprite
       sprite: Mobs/Species/Human/parts.rsi
       state: full
     - type: RandomHumanoidSpawner
@@ -339,4 +578,34 @@
 - type: randomHumanoidSettings
   id: NukeOp
   components:
+    - type: RandomHumanoidAppearance
+      randomizeName: false
     - type: NukeOperative
+
+- type: entity
+  id: RandomHumanoidSpawnerCluwne
+  name: Cluwne
+  suffix: spawns a cluwne
+  components:
+    - type: Sprite
+      sprite: Markers/jobs.rsi
+      state: cluwne
+    - type: RandomHumanoidSpawner
+      settings: Cluwne
+    - type: RandomMetadata
+      nameSegments:
+      - NamesFirst
+      - NamesLast
+
+- type: randomHumanoidSettings
+  id: Cluwne
+  parent: EventHumanoid
+  randomizeName: false
+  components:
+    - type: GhostRole
+      name: ghost-role-information-cluwne-name
+      description: ghost-role-information-cluwne-description
+      rules: ghost-role-information-nonantagonist-rules
+      raffle:
+        settings: default
+    - type: Cluwne

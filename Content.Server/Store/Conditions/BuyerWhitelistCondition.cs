@@ -6,7 +6,7 @@ namespace Content.Server.Store.Conditions;
 /// <summary>
 /// Filters out an entry based on the components or tags on an entity.
 /// </summary>
-public sealed class BuyerWhitelistCondition : ListingCondition
+public sealed partial class BuyerWhitelistCondition : ListingCondition
 {
     /// <summary>
     /// A whitelist of tags or components.
@@ -23,18 +23,11 @@ public sealed class BuyerWhitelistCondition : ListingCondition
     public override bool Condition(ListingConditionArgs args)
     {
         var ent = args.EntityManager;
+        var whitelistSystem = ent.System<EntityWhitelistSystem>();
 
-        if (Whitelist != null)
-        {
-            if (!Whitelist.IsValid(args.Buyer, ent))
-                return false;
-        }
-
-        if (Blacklist != null)
-        {
-            if (Blacklist.IsValid(args.Buyer, ent))
-                return false;
-        }
+        if (whitelistSystem.IsWhitelistFail(Whitelist, args.Buyer) ||
+            whitelistSystem.IsBlacklistPass(Blacklist, args.Buyer))
+            return false;
 
         return true;
     }

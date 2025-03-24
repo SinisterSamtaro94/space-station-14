@@ -1,4 +1,5 @@
 using System.Threading;
+using Content.Server.Explosion.EntitySystems;
 using Content.Shared.Containers.ItemSlots;
 using Content.Shared.Explosion;
 using Content.Shared.Nuke;
@@ -15,7 +16,7 @@ namespace Content.Server.Nuke
     /// </summary>
     [RegisterComponent]
     [Access(typeof(NukeSystem))]
-    public sealed class NukeComponent : SharedNukeComponent
+    public sealed partial class NukeComponent : SharedNukeComponent
     {
         /// <summary>
         ///     Default bomb timer value in seconds.
@@ -23,6 +24,13 @@ namespace Content.Server.Nuke
         [DataField("timer")]
         [ViewVariables(VVAccess.ReadWrite)]
         public int Timer = 300;
+
+        /// <summary>
+        ///     If the nuke is disarmed, this sets the minimum amount of time the timer can have.
+        ///     The remaining time will reset to this value if it is below it.
+        /// </summary>
+        [DataField]
+        public int MinimumTime = 180;
 
         /// <summary>
         ///     How long until the bomb can arm again after deactivation.
@@ -78,7 +86,7 @@ namespace Content.Server.Nuke
         public SoundSpecifier DisarmSound = new SoundPathSpecifier("/Audio/Misc/notice2.ogg");
 
         [DataField("armMusic")]
-        public SoundSpecifier ArmMusic = new SoundPathSpecifier("/Audio/StationEvents/countdown.ogg");
+        public SoundSpecifier ArmMusic = new SoundCollectionSpecifier("NukeMusic");
 
         // These datafields here are duplicates of those in explosive component. But I'm hesitant to use explosive
         // component, just in case at some point, somehow, when grenade crafting added in someone manages to wire up a
@@ -173,8 +181,13 @@ namespace Content.Server.Nuke
         /// </summary>
         public bool PlayedAlertSound = false;
 
-        public CancellationToken? DisarmCancelToken = null;
+        public EntityUid? AlertAudioStream = default;
 
-        public IPlayingAudioStream? AlertAudioStream = default;
+        /// <summary>
+        ///     The radius from the nuke for which there must be floor tiles for it to be anchorable.
+        /// </summary>
+        [ViewVariables(VVAccess.ReadWrite)]
+        [DataField("requiredFloorRadius")]
+        public float RequiredFloorRadius = 5;
     }
 }

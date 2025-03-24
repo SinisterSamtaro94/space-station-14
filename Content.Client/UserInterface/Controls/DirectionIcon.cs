@@ -1,5 +1,7 @@
+using System.Numerics;
 using Robust.Client.Graphics;
 using Robust.Client.UserInterface.Controls;
+using Direction = Robust.Shared.Maths.Direction;
 
 namespace Content.Client.UserInterface.Controls;
 
@@ -63,7 +65,7 @@ public sealed class DirectionIcon : TextureRect
         if (_rotation != null)
         {
             var offset = (-_rotation.Value).RotateVec(Size * UIScale / 2) - Size * UIScale / 2;
-            handle.SetTransform(Matrix3.CreateTransform(GlobalPixelPosition - offset, -_rotation.Value));
+            handle.SetTransform(Matrix3Helpers.CreateTransform(GlobalPixelPosition - offset, -_rotation.Value));
         }
 
         base.Draw(handle);

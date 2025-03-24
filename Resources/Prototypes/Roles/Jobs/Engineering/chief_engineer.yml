@@ -1,20 +1,23 @@
 - type: job
   id: ChiefEngineer
   name: job-name-ce
+  description: job-description-ce
   playTimeTracker: JobChiefEngineer
   requirements:
     - !type:RoleTimeRequirement
       role: JobAtmosphericTechnician
-      time: 3600
+      time: 21600 #6 hrs
+    - !type:RoleTimeRequirement
+      role: JobStationEngineer
+      time: 21600 #6 hrs
     - !type:DepartmentTimeRequirement
       department: Engineering
-      time: 18000
+      time: 36000 #10 hrs
     - !type:OverallPlaytimeRequirement
-      time: 108000
+      time: 144000 #40 hrs
   weight: 10
   startingGear: ChiefEngineerGear
-  icon: "ChiefEngineer"
-  requireAdminNotify: true
+  icon: "JobIconChiefEngineer"
   supervisors: job-supervisors-captain
   canBeAntag: false
   access:
@@ -24,18 +27,22 @@
   - External
   - ChiefEngineer
   - Atmospherics
+  - Brig
+  - Cryogenics
+  special:
+  - !type:AddImplantSpecial
+    implants: [ MindShieldImplant ]
+  - !type:AddComponentSpecial
+    components:
+      - type: CommandStaff
 
 - type: startingGear
   id: ChiefEngineerGear
   equipment:
-    head: ClothingHeadHatHardhatWhite
-    jumpsuit: ClothingUniformJumpsuitChiefEngineer
-    back: ClothingBackpackEngineeringFilled
-    shoes: ClothingShoesColorBrown
     id: CEPDA
     eyes: ClothingEyesGlassesMeson
     ears: ClothingHeadsetCE
-    belt: ClothingBeltChiefEngineerFilled
-  innerclothingskirt: ClothingUniformJumpskirtChiefEngineer
-  satchel: ClothingBackpackSatchelEngineeringFilled
-  duffelbag: ClothingBackpackDuffelEngineeringFilled
+    belt: ClothingBeltUtilityEngineering
+  storage:
+    back:
+    - Flash

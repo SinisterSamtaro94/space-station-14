@@ -9,7 +9,7 @@ namespace Content.Server.Construction.Completions;
 ///     Generate an admin log upon reaching this node. Useful for dangerous construction (e.g., modular grenades)
 /// </summary>
 [UsedImplicitly]
-public sealed class AdminLog : IGraphAction
+public sealed partial class AdminLog : IGraphAction
 {
     [DataField("logType")]
     public LogType LogType = LogType.Construction;
@@ -25,7 +25,7 @@ public sealed class AdminLog : IGraphAction
         var logManager = IoCManager.Resolve<IAdminLogManager>();
 
         if (userUid.HasValue)
-            logManager.Add(LogType, Impact, $"{Message} - Entity: {entityManager.ToPrettyString(uid):entity}, User: {entityManager.ToPrettyString(userUid.Value):user}");
+            logManager.Add(LogType, Impact, $"{Message} - Entity: {entityManager.ToPrettyString(uid):entity}, User: {entityManager.ToPrettyString(userUid.Value):player}");
         else
             logManager.Add(LogType, Impact, $"{Message} - Entity: {entityManager.ToPrettyString(uid):entity}");
     }

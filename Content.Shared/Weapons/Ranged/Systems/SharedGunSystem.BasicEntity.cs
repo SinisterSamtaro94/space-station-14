@@ -8,42 +8,25 @@ public abstract partial class SharedGunSystem
 {
     protected virtual void InitializeBasicEntity()
     {
-        SubscribeLocalEvent<BasicEntityAmmoProviderComponent, ComponentInit>(OnBasicEntityInit);
+        SubscribeLocalEvent<BasicEntityAmmoProviderComponent, MapInitEvent>(OnBasicEntityMapInit);
         SubscribeLocalEvent<BasicEntityAmmoProviderComponent, TakeAmmoEvent>(OnBasicEntityTakeAmmo);
         SubscribeLocalEvent<BasicEntityAmmoProviderComponent, GetAmmoCountEvent>(OnBasicEntityAmmoCount);
-
-        SubscribeLocalEvent<BasicEntityAmmoProviderComponent, ComponentGetState>(OnBasicEntityGetState);
-        SubscribeLocalEvent<BasicEntityAmmoProviderComponent, ComponentHandleState>(OnBasicEntityHandleState);
     }
 
-    private void OnBasicEntityGetState(EntityUid uid, BasicEntityAmmoProviderComponent component, ref ComponentGetState args)
-    {
-        args.State = new BasicEntityAmmoProviderComponentState(component.Capacity, component.Count);
-    }
-
-    private void OnBasicEntityHandleState(EntityUid uid, BasicEntityAmmoProviderComponent component, ref ComponentHandleState args)
-    {
-        if (args.Current is BasicEntityAmmoProviderComponentState state)
-        {
-            component.Capacity = state.Capacity;
-            component.Count = state.Count;
-        }
-    }
-
-    private void OnBasicEntityInit(EntityUid uid, BasicEntityAmmoProviderComponent component, ComponentInit args)
+    private void OnBasicEntityMapInit(EntityUid uid, BasicEntityAmmoProviderComponent component, MapInitEvent args)
     {
         if (component.Count is null)
         {
             component.Count = component.Capacity;
-            Dirty(component);
+            Dirty(uid, component);
         }
 
-        UpdateBasicEntityAppearance(component);
+        UpdateBasicEntityAppearance(uid, component);
     }
 
     private void OnBasicEntityTakeAmmo(EntityUid uid, BasicEntityAmmoProviderComponent component, TakeAmmoEvent args)
     {
-        for (int i = 0; i < args.Shots; i++)
+        for (var i = 0; i < args.Shots; i++)
         {
             if (component.Count <= 0)
                 return;
@@ -54,11 +37,12 @@ public abstract partial class SharedGunSystem
             }
 
             var ent = Spawn(component.Proto, args.Coordinates);
-            args.Ammo.Add(EnsureComp<AmmoComponent>(ent));
+            args.Ammo.Add((ent, EnsureShootable(ent)));
         }
 
-        UpdateBasicEntityAppearance(component);
-        Dirty(component);
+        _recharge.Reset(uid);
+        UpdateBasicEntityAppearance(uid, component);
+        Dirty(uid, component);
     }
 
     private void OnBasicEntityAmmoCount(EntityUid uid, BasicEntityAmmoProviderComponent component, ref GetAmmoCountEvent args)
@@ -67,28 +51,37 @@ public abstract partial class SharedGunSystem
         args.Count = component.Count ?? int.MaxValue;
     }
 
-    private void UpdateBasicEntityAppearance(BasicEntityAmmoProviderComponent component)
+    private void UpdateBasicEntityAppearance(EntityUid uid, BasicEntityAmmoProviderComponent component)
     {
-        if (!Timing.IsFirstTimePredicted || !TryComp<AppearanceComponent>(component.Owner, out var appearance)) return;
+        if (!Timing.IsFirstTimePredicted || !TryComp<AppearanceComponent>(uid, out var appearance))
+            return;
 
-        Appearance.SetData(appearance.Owner, AmmoVisuals.HasAmmo, component.Count != 0, appearance);
-        Appearance.SetData(appearance.Owner, AmmoVisuals.AmmoCount, component.Count ?? int.MaxValue, appearance);
-        Appearance.SetData(appearance.Owner, AmmoVisuals.AmmoMax, component.Capacity ?? int.MaxValue, appearance);
+        Appearance.SetData(uid, AmmoVisuals.HasAmmo, component.Count != 0, appearance);
+        Appearance.SetData(uid, AmmoVisuals.AmmoCount, component.Count ?? int.MaxValue, appearance);
+        Appearance.SetData(uid, AmmoVisuals.AmmoMax, component.Capacity ?? int.MaxValue, appearance);
     }
 
     #region Public API
+    public bool ChangeBasicEntityAmmoCount(EntityUid uid, int delta, BasicEntityAmmoProviderComponent? component = null)
+    {
+        if (!Resolve(uid, ref component, false) || component.Count == null)
+            return false;
+
+        return UpdateBasicEntityAmmoCount(uid, component.Count.Value + delta, component);
+    }
 
     public bool UpdateBasicEntityAmmoCount(EntityUid uid, int count, BasicEntityAmmoProviderComponent? component = null)
     {
-        if (!Resolve(uid, ref component))
+        if (!Resolve(uid, ref component, false))
             return false;
 
         if (count > component.Capacity)
             return false;
 
         component.Count = count;
-        Dirty(component);
-        UpdateBasicEntityAppearance(component);
+        UpdateBasicEntityAppearance(uid, component);
+        UpdateAmmoCount(uid);
+        Dirty(uid, component);
 
         return true;
     }

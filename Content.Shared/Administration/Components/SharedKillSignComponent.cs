@@ -1,6 +1,9 @@
-﻿namespace Content.Shared.Administration.Components;
+﻿using Robust.Shared.GameStates;
 
-public abstract class SharedKillSignComponent : Component
+namespace Content.Shared.Administration.Components;
+
+[NetworkedComponent]
+public abstract partial class SharedKillSignComponent : Component
 {
 
 }

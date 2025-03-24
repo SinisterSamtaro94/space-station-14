@@ -1,11 +1,13 @@
 - type: job
   id: Janitor
   name: job-name-janitor
+  description: job-description-janitor
   playTimeTracker: JobJanitor
   startingGear: JanitorGear
-  icon: "Janitor"
+  icon: "JobIconJanitor"
   supervisors: job-supervisors-hop
   access:
+  - Service
   - Janitor
   - Maintenance
   special:
@@ -16,26 +18,20 @@
 - type: startingGear
   id: JanitorGear
   equipment:
-    jumpsuit: ClothingUniformJumpsuitJanitor
-    back: ClothingBackpackFilled
     shoes: ClothingShoesGaloshes
-    head: ClothingHeadHatPurplesoft
     id: JanitorPDA
     ears: ClothingHeadsetService
     belt: ClothingBeltJanitorFilled
-  innerclothingskirt: ClothingUniformJumpskirtJanitor
-  satchel: ClothingBackpackSatchelFilled
-  duffelbag: ClothingBackpackDuffelFilled
+  #storage:
+    #back:
+    #- Stuff
 
 - type: startingGear
   id: JanitorMaidGear
   equipment:
     jumpsuit: ClothingUniformJumpskirtJanimaid
-    back: ClothingBackpackFilled
     id: JanitorPDA
+    gloves: ClothingHandsGlovesJanitor
     head: ClothingHeadHatCatEars
     ears: ClothingHeadsetService
     belt: ClothingBeltJanitorFilled
-  innerclothingskirt: ClothingUniformJumpskirtJanimaid
-  satchel: ClothingBackpackSatchelFilled
-  duffelbag: ClothingBackpackDuffelFilled

@@ -1,32 +1,27 @@
-using System.Diagnostics.CodeAnalysis;
 using Content.Server.Body.Components;
-using Content.Server.GameTicking;
+using Content.Server.Ghost;
 using Content.Server.Humanoid;
-using Content.Server.Kitchen.Components;
-using Content.Server.Mind.Components;
 using Content.Shared.Body.Components;
 using Content.Shared.Body.Part;
-using Content.Shared.Body.Prototypes;
 using Content.Shared.Body.Systems;
-using Content.Shared.Coordinates;
 using Content.Shared.Humanoid;
-using Content.Shared.MobState.Components;
+using Content.Shared.Mind;
+using Content.Shared.Mobs.Systems;
 using Content.Shared.Movement.Events;
-using Content.Shared.Random.Helpers;
+using Content.Shared.Movement.Systems;
 using Robust.Shared.Audio;
-using Robust.Shared.Containers;
-using Robust.Shared.Player;
 using Robust.Shared.Timing;
+using System.Numerics;
 
 namespace Content.Server.Body.Systems;
 
 public sealed class BodySystem : SharedBodySystem
 {
-    [Dependency] private readonly GameTicker _ticker = default!;
+    [Dependency] private readonly GhostSystem _ghostSystem = default!;
     [Dependency] private readonly IGameTiming _gameTiming = default!;
-
-    [Dependency] private readonly HumanoidSystem _humanoidSystem = default!;
-    [Dependency] private readonly SharedAudioSystem _audio = default!;
+    [Dependency] private readonly HumanoidAppearanceSystem _humanoidSystem = default!;
+    [Dependency] private readonly MobStateSystem _mobState = default!;
+    [Dependency] private readonly SharedMindSystem _mindSystem = default!;
 
     public override void Initialize()
     {
@@ -34,131 +29,98 @@ public sealed class BodySystem : SharedBodySystem
 
         SubscribeLocalEvent<BodyComponent, MoveInputEvent>(OnRelayMoveInput);
         SubscribeLocalEvent<BodyComponent, ApplyMetabolicMultiplierEvent>(OnApplyMetabolicMultiplier);
-        SubscribeLocalEvent<BodyComponent, BeingMicrowavedEvent>(OnBeingMicrowaved);
     }
 
-    private void OnRelayMoveInput(EntityUid uid, BodyComponent component, ref MoveInputEvent args)
+    private void OnRelayMoveInput(Entity<BodyComponent> ent, ref MoveInputEvent args)
     {
-        if (EntityManager.TryGetComponent<MobStateComponent>(uid, out var mobState) &&
-            mobState.IsDead() &&
-            EntityManager.TryGetComponent<MindComponent>(uid, out var mind) &&
-            mind.HasMind)
+        // If they haven't actually moved then ignore it.
+        if ((args.Entity.Comp.HeldMoveButtons &
+             (MoveButtons.Down | MoveButtons.Left | MoveButtons.Up | MoveButtons.Right)) == 0x0)
         {
-            if (!mind.Mind!.TimeOfDeath.HasValue)
-            {
-                mind.Mind.TimeOfDeath = _gameTiming.RealTime;
-            }
+            return;
+        }
 
-            _ticker.OnGhostAttempt(mind.Mind!, true);
+        if (_mobState.IsDead(ent) && _mindSystem.TryGetMind(ent, out var mindId, out var mind))
+        {
+            mind.TimeOfDeath ??= _gameTiming.RealTime;
+            _ghostSystem.OnGhostAttempt(mindId, canReturnGlobal: true, mind: mind);
         }
     }
 
-    private void OnApplyMetabolicMultiplier(EntityUid uid, BodyComponent component,
-        ApplyMetabolicMultiplierEvent args)
+    private void OnApplyMetabolicMultiplier(
+        Entity<BodyComponent> ent,
+        ref ApplyMetabolicMultiplierEvent args)
     {
-        foreach (var organ in GetBodyOrgans(uid, component))
+        foreach (var organ in GetBodyOrgans(ent, ent))
         {
-            RaiseLocalEvent(organ.Id, args);
+            RaiseLocalEvent(organ.Id, ref args);
         }
     }
 
-    private void OnBeingMicrowaved(EntityUid uid, BodyComponent component, BeingMicrowavedEvent args)
+    protected override void AddPart(
+        Entity<BodyComponent?> bodyEnt,
+        Entity<BodyPartComponent> partEnt,
+        string slotId)
     {
-        if (args.Handled)
+        // TODO: Predict this probably.
+        base.AddPart(bodyEnt, partEnt, slotId);
+
+        var layer = partEnt.Comp.ToHumanoidLayers();
+        if (layer != null)
+        {
+            var layers = HumanoidVisualLayersExtension.Sublayers(layer.Value);
+            _humanoidSystem.SetLayersVisibility(bodyEnt.Owner, layers, visible: true);
+        }
+    }
+
+    protected override void RemovePart(
+        Entity<BodyComponent?> bodyEnt,
+        Entity<BodyPartComponent> partEnt,
+        string slotId)
+    {
+        base.RemovePart(bodyEnt, partEnt, slotId);
+
+        if (!TryComp<HumanoidAppearanceComponent>(bodyEnt, out var humanoid))
             return;
 
-        // Don't microwave animals, kids
-        Transform(uid).AttachToGridOrMap();
-        GibBody(uid, false, component);
+        var layer = partEnt.Comp.ToHumanoidLayers();
 
-        args.Handled = true;
-    }
-
-    public override bool AttachPart(
-        EntityUid? partId,
-        BodyPartSlot slot,
-        [NotNullWhen(true)] BodyPartComponent? part = null)
-    {
-        if (!base.AttachPart(partId, slot, part))
-            return false;
-
-        if (part.Body is { } body &&
-            TryComp<HumanoidComponent>(body, out var humanoid))
-        {
-            var layer = part.ToHumanoidLayers();
-            if (layer != null)
-            {
-                var layers = HumanoidVisualLayersExtension.Sublayers(layer.Value);
-                _humanoidSystem.SetLayersVisibility(body, layers, true, true, humanoid);
-            }
-        }
-
-        return true;
-    }
-
-    public override bool DropPart(EntityUid? partId, BodyPartComponent? part = null)
-    {
-        var oldBody = CompOrNull<BodyPartComponent>(partId)?.Body;
-
-        if (!base.DropPart(partId, part))
-            return false;
-
-        if (oldBody == null || !TryComp<HumanoidComponent>(oldBody, out var humanoid))
-            return true;
-
-        var layer = part.ToHumanoidLayers();
-        if (layer == null)
-            return true;
+        if (layer is null)
+            return;
 
         var layers = HumanoidVisualLayersExtension.Sublayers(layer.Value);
-        _humanoidSystem.SetLayersVisibility(oldBody.Value, layers, false, true, humanoid);
-        return true;
+        _humanoidSystem.SetLayersVisibility((bodyEnt, humanoid), layers, visible: false);
     }
 
-    protected override void InitBody(BodyComponent body, BodyPrototype prototype)
+    public override HashSet<EntityUid> GibBody(
+        EntityUid bodyId,
+        bool gibOrgans = false,
+        BodyComponent? body = null,
+        bool launchGibs = true,
+        Vector2? splatDirection = null,
+        float splatModifier = 1,
+        Angle splatCone = default,
+        SoundSpecifier? gibSoundOverride = null
+    )
     {
-        var root = prototype.Slots[prototype.Root];
-        var bodyId = Spawn(root.Part, body.Owner.ToCoordinates());
-        var partComponent = Comp<BodyPartComponent>(bodyId);
-        var slot = new BodyPartSlot(root.Part, body.Owner, partComponent.PartType);
-        body.Root = slot;
-        partComponent.Body = bodyId;
-
-        Containers.EnsureContainer<Container>(body.Owner, BodyContainerId);
-
-        AttachPart(bodyId, slot, partComponent);
-        InitPart(partComponent, prototype, prototype.Root);
-    }
-
-    public override HashSet<EntityUid> GibBody(EntityUid? bodyId, bool gibOrgans = false, BodyComponent? body = null)
-    {
-        if (bodyId == null || !Resolve(bodyId.Value, ref body, false))
-            return new HashSet<EntityUid>();
-
-        var gibs = base.GibBody(bodyId, gibOrgans, body);
-
-        var xform = Transform(bodyId.Value);
-        var coordinates = xform.Coordinates;
-        var filter = Filter.Pvs(bodyId.Value, entityManager: EntityManager);
-        var audio = AudioParams.Default.WithVariation(0.025f);
-
-        _audio.Play(body.GibSound, filter, coordinates, audio);
-
-        if (TryComp(bodyId, out ContainerManagerComponent? container))
+        if (!Resolve(bodyId, ref body, logMissing: false)
+            || TerminatingOrDeleted(bodyId)
+            || EntityManager.IsQueuedForDeletion(bodyId))
         {
-            foreach (var cont in container.GetAllContainers())
-            {
-                foreach (var ent in cont.ContainedEntities)
-                {
-                    cont.ForceRemove(ent);
-                    Transform(ent).Coordinates = coordinates;
-                    ent.RandomOffset(0.25f);
-                }
-            }
+            return new HashSet<EntityUid>();
         }
 
-        RaiseLocalEvent(bodyId.Value, new BeingGibbedEvent(gibs));
-        QueueDel(bodyId.Value);
+        var xform = Transform(bodyId);
+        if (xform.MapUid is null)
+            return new HashSet<EntityUid>();
+
+        var gibs = base.GibBody(bodyId, gibOrgans, body, launchGibs: launchGibs,
+            splatDirection: splatDirection, splatModifier: splatModifier, splatCone:splatCone);
+
+        var ev = new BeingGibbedEvent(gibs);
+        RaiseLocalEvent(bodyId, ref ev);
+
+        QueueDel(bodyId);
 
         return gibs;
     }

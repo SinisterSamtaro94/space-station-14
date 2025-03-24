@@ -7,6 +7,7 @@ using Robust.Client.UserInterface.Controls;
 using Robust.Client.UserInterface.CustomControls;
 using Robust.Client.UserInterface.XAML;
 using Robust.Client.Utility;
+using Robust.Shared.Prototypes;
 using static Robust.Client.UserInterface.Controls.BaseButton;
 
 namespace Content.Client.Decals.UI;
@@ -14,13 +15,16 @@ namespace Content.Client.Decals.UI;
 [GenerateTypedNameReferences]
 public sealed partial class DecalPlacerWindow : DefaultWindow
 {
+    [Dependency] private readonly IPrototypeManager _prototype = default!;
+    [Dependency] private readonly IEntityManager _e = default!;
+
     private readonly DecalPlacementSystem _decalPlacementSystem;
 
     public FloatSpinBox RotationSpinBox;
 
     private PaletteColorPicker? _picker;
 
-    private Dictionary<string, Texture>? _decals;
+    private SortedDictionary<string, Texture>? _decals;
     private string? _selected;
     private Color _color = Color.White;
     private bool _useColor;
@@ -29,11 +33,14 @@ public sealed partial class DecalPlacerWindow : DefaultWindow
     private bool _cleanable;
     private int _zIndex;
 
+    private bool _auto;
+
     public DecalPlacerWindow()
     {
         RobustXamlLoader.Load(this);
+        IoCManager.InjectDependencies(this);
 
-        _decalPlacementSystem = EntitySystem.Get<DecalPlacementSystem>();
+        _decalPlacementSystem = _e.System<DecalPlacementSystem>();
 
         // This needs to be done in C# so we can have custom stuff passed in the constructor
         // and thus have a proper step size
@@ -77,6 +84,12 @@ public sealed partial class DecalPlacerWindow : DefaultWindow
             _rotation = args.Value;
             UpdateDecalPlacementInfo();
         };
+        EnableAuto.OnToggled += args =>
+        {
+            _auto = args.Pressed;
+            if (_selected != null)
+                SelectDecal(_selected);
+        };
         EnableColor.OnToggled += args =>
         {
             _useColor = args.Pressed;
@@ -93,8 +106,11 @@ public sealed partial class DecalPlacerWindow : DefaultWindow
             _cleanable = args.Pressed;
             UpdateDecalPlacementInfo();
         };
-        // i have to make this a member method for some reason and i have no idea why its only for spinboxes
-        ZIndexSpinBox.ValueChanged += ZIndexSpinboxChanged;
+        ZIndexSpinBox.ValueChanged += args =>
+        {
+            _zIndex = args.Value;
+            UpdateDecalPlacementInfo();
+        };
     }
 
     private void OnColorPicked(Color color)
@@ -117,7 +133,8 @@ public sealed partial class DecalPlacerWindow : DefaultWindow
     {
         // Clear
         Grid.RemoveAllChildren();
-        if (_decals == null) return;
+        if (_decals == null)
+            return;
 
         var filter = Search.Text;
         foreach (var (decal, tex) in _decals)
@@ -153,24 +170,37 @@ public sealed partial class DecalPlacerWindow : DefaultWindow
         }
     }
 
-    private void ZIndexSpinboxChanged(object? sender, ValueChangedEventArgs e)
-    {
-        _zIndex = e.Value;
-        UpdateDecalPlacementInfo();
-    }
-
     private void ButtonOnPressed(ButtonEventArgs obj)
     {
-        if (obj.Button.Name == null) return;
+        if (obj.Button.Name == null)
+            return;
 
-        _selected = obj.Button.Name;
+        SelectDecal(obj.Button.Name);
+    }
+
+    private void SelectDecal(string decalId)
+    {
+        if (!_prototype.TryIndex<DecalPrototype>(decalId, out var decal))
+            return;
+
+        _selected = decalId;
+
+        if (_auto)
+        {
+            EnableCleanable.Pressed = decal.DefaultCleanable;
+            EnableColor.Pressed = decal.DefaultCustomColor;
+            EnableSnap.Pressed = decal.DefaultSnap;
+            _cleanable = decal.DefaultCleanable;
+            _useColor = decal.DefaultCustomColor;
+            _snap = decal.DefaultSnap;
+        }
         UpdateDecalPlacementInfo();
         RefreshList();
     }
 
     public void Populate(IEnumerable<DecalPrototype> prototypes)
     {
-        _decals = new Dictionary<string, Texture>();
+        _decals = new SortedDictionary<string, Texture>();
         foreach (var decalPrototype in prototypes)
         {
             if (decalPrototype.ShowMenu)

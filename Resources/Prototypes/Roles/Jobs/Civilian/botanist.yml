@@ -1,9 +1,10 @@
 - type: job
   id: Botanist
   name: job-name-botanist
+  description: job-description-botanist
   playTimeTracker: JobBotanist
   startingGear: BotanistGear
-  icon: "Botanist"
+  icon: "JobIconBotanist"
   supervisors: job-supervisors-hop
   access:
   - Service
@@ -12,17 +13,18 @@
   extendedAccess:
   - Kitchen
   - Bar
+  special:
+  - !type:GiveItemOnHolidaySpecial
+    holiday: FourTwenty
+    prototype: CannabisSeeds
 
 - type: startingGear
   id: BotanistGear
   equipment:
-    jumpsuit: ClothingUniformJumpsuitHydroponics
-    back: ClothingBackpackHydroponicsFilled
     shoes: ClothingShoesColorBrown
     id: BotanistPDA
     ears: ClothingHeadsetService
-    outerClothing: ClothingOuterApronBotanist
     belt: ClothingBeltPlantFilled
-  innerclothingskirt: ClothingUniformJumpskirtHydroponics
-  satchel: ClothingBackpackSatchelHydroponicsFilled
-  duffelbag: ClothingBackpackDuffelHydroponicsFilled
+  #storage:
+    #back:
+    #- Stuff

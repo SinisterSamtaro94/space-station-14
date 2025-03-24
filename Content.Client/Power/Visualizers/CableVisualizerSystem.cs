@@ -1,20 +1,21 @@
 using Content.Client.SubFloor;
-using Content.Shared.SubFloor;
 using Content.Shared.Wires;
 using Robust.Client.GameObjects;
 
 namespace Content.Client.Power.Visualizers;
 
-public sealed partial class CableVisualizerSystem : EntitySystem
+public sealed class CableVisualizerSystem : EntitySystem
 {
+    [Dependency] private readonly AppearanceSystem _appearanceSystem = default!;
+
     public override void Initialize()
     {
         base.Initialize();
 
-        SubscribeLocalEvent<CableVisualizerComponent, AppearanceChangeEvent>(OnAppearanceChanged, after: new[] { typeof(SubFloorHideSystem) });
+        SubscribeLocalEvent<CableVisualizerComponent, AppearanceChangeEvent>(OnAppearanceChange, after: new[] { typeof(SubFloorHideSystem) });
     }
 
-    private void OnAppearanceChanged(EntityUid uid, CableVisualizerComponent component, ref AppearanceChangeEvent args)
+    private void OnAppearanceChange(EntityUid uid, CableVisualizerComponent component, ref AppearanceChangeEvent args)
     {
         if (args.Sprite == null)
             return;
@@ -26,10 +27,9 @@ public sealed partial class CableVisualizerSystem : EntitySystem
             return;
         }
 
-        if (!args.Component.TryGetData(WireVisVisuals.ConnectedMask, out WireVisDirFlags mask))
+        if (!_appearanceSystem.TryGetData<WireVisDirFlags>(uid, WireVisVisuals.ConnectedMask, out var mask, args.Component))
             mask = WireVisDirFlags.None;
 
         args.Sprite.LayerSetState(0, $"{component.StatePrefix}{(int) mask}");
     }
-
 }

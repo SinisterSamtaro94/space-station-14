@@ -1,17 +1,18 @@
+using Content.Shared.EntityList;
 using Content.Shared.Whitelist;
+using Robust.Shared.Prototypes;
 
 namespace Content.Server.Gatherable.Components;
 
 [RegisterComponent]
 [Access(typeof(GatherableSystem))]
-public sealed class GatherableComponent : Component
+public sealed partial class GatherableComponent : Component
 {
     /// <summary>
     ///     Whitelist for specifying the kind of tools can be used on a resource
     ///     Supports multiple tags.
     /// </summary>
-    [ViewVariables]
-    [DataField("whitelist", required: true)]
+    [DataField(required: true)]
     public EntityWhitelist? ToolWhitelist;
 
     /// <summary>
@@ -19,14 +20,20 @@ public sealed class GatherableComponent : Component
     ///     (Tag1, Tag2, LootTableID1, LootTableID2 are placeholders for example)
     ///     --------------------
     ///     useMappedLoot: true
-    ///     whitelist:
+    ///     toolWhitelist:
     ///       tags:
     ///        - Tag1
     ///        - Tag2
-    ///     mappedLoot:
+    ///     loot:
     ///       Tag1: LootTableID1
     ///       Tag2: LootTableID2
     /// </summary>
-    [DataField("loot")]
-    public Dictionary<string, string>? MappedLoot = new();
+    [DataField]
+    public Dictionary<string, ProtoId<EntityLootTablePrototype>>? Loot = new();
+
+    /// <summary>
+    /// Random shift of the appearing entity during gathering
+    /// </summary>
+    [DataField]
+    public float GatherOffset = 0.3f;
 }

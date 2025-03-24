@@ -1,11 +1,7 @@
-﻿using System.Collections.Generic;
-using Content.Shared.Construction;
+﻿using System.Linq;
 using Content.Shared.Construction.Prototypes;
-using Robust.Client.Graphics;
 using Robust.Client.Placement;
 using Robust.Client.Utility;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
 using Robust.Shared.Map;
 
 namespace Content.Client.Construction
@@ -38,9 +34,9 @@ namespace Content.Client.Construction
         /// <inheritdoc />
         public override bool HijackDeletion(EntityUid entity)
         {
-            if (IoCManager.Resolve<IEntityManager>().TryGetComponent(entity, out ConstructionGhostComponent? ghost))
+            if (IoCManager.Resolve<IEntityManager>().HasComponent<ConstructionGhostComponent>(entity))
             {
-                _constructionSystem.ClearGhost(ghost.GhostId);
+                _constructionSystem.ClearGhost(entity.GetHashCode());
             }
             return true;
         }
@@ -49,16 +45,7 @@ namespace Content.Client.Construction
         public override void StartHijack(PlacementManager manager)
         {
             base.StartHijack(manager);
-
-            var frame = _prototype?.Icon.DirFrame0();
-            if (frame == null)
-            {
-                manager.CurrentTextures = null;
-            }
-            else
-            {
-                manager.CurrentTextures = new List<IDirectionalTextureProvider> {frame};
-            }
+            manager.CurrentTextures = _prototype?.Layers.Select(sprite => sprite.DirFrame0()).ToList();
         }
     }
 }

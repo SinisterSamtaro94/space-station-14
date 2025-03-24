@@ -1,58 +1,63 @@
 using Content.Shared.Whitelist;
 using Robust.Shared.Prototypes;
-using static Robust.Shared.Prototypes.EntityPrototype; // don't worry about it
 
-namespace Content.Shared.Traits
+namespace Content.Shared.Traits;
+
+/// <summary>
+/// Describes a trait.
+/// </summary>
+[Prototype]
+public sealed partial class TraitPrototype : IPrototype
 {
+    [ViewVariables]
+    [IdDataField]
+    public string ID { get; private set; } = default!;
+
     /// <summary>
-    ///     Describes a trait.
+    /// The name of this trait.
     /// </summary>
-    [Prototype("trait")]
-    public sealed class TraitPrototype : IPrototype
-    {
-        private string _name = string.Empty;
-        private string? _description;
+    [DataField]
+    public LocId Name { get; private set; } = string.Empty;
 
-        [ViewVariables]
-        [IdDataField]
-        public string ID { get; } = default!;
+    /// <summary>
+    /// The description of this trait.
+    /// </summary>
+    [DataField]
+    public LocId? Description { get; private set; }
 
-        /// <summary>
-        ///     The name of this trait.
-        /// </summary>
-        [DataField("name")]
-        public string Name
-        {
-            get => _name;
-            private set => _name = Loc.GetString(value);
-        }
+    /// <summary>
+    /// Don't apply this trait to entities this whitelist IS NOT valid for.
+    /// </summary>
+    [DataField]
+    public EntityWhitelist? Whitelist;
 
-        /// <summary>
-        ///     The description of this trait.
-        /// </summary>
-        [DataField("description")]
-        public string? Description
-        {
-            get => _description;
-            private set => _description = value is null ? null : Loc.GetString(value);
-        }
+    /// <summary>
+    /// Don't apply this trait to entities this whitelist IS valid for. (hence, a blacklist)
+    /// </summary>
+    [DataField]
+    public EntityWhitelist? Blacklist;
 
-        /// <summary>
-        ///     Don't apply this trait to entities this whitelist IS NOT valid for.
-        /// </summary>
-        [DataField("whitelist")]
-        public EntityWhitelist? Whitelist;
+    /// <summary>
+    /// The components that get added to the player, when they pick this trait.
+    /// </summary>
+    [DataField]
+    public ComponentRegistry Components { get; private set; } = default!;
 
-        /// <summary>
-        ///     Don't apply this trait to entities this whitelist IS valid for. (hence, a blacklist)
-        /// </summary>
-        [DataField("blacklist")]
-        public EntityWhitelist? Blacklist;
+    /// <summary>
+    /// Gear that is given to the player, when they pick this trait.
+    /// </summary>
+    [DataField]
+    public EntProtoId? TraitGear;
 
-        /// <summary>
-        ///     The components that get added to the player, when they pick this trait.
-        /// </summary>
-        [DataField("components")]
-        public ComponentRegistry Components { get; } = default!;
-    }
+    /// <summary>
+    /// Trait Price. If negative number, points will be added.
+    /// </summary>
+    [DataField]
+    public int Cost = 0;
+
+    /// <summary>
+    /// Adds a trait to a category, allowing you to limit the selection of some traits to the settings of that category.
+    /// </summary>
+    [DataField]
+    public ProtoId<TraitCategoryPrototype>? Category;
 }

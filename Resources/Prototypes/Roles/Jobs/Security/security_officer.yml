@@ -1,13 +1,14 @@
 - type: job
   id: SecurityOfficer
   name: job-name-security
+  description: job-description-security
   playTimeTracker: JobSecurityOfficer
   requirements:
     - !type:DepartmentTimeRequirement
       department: Security
-      time: 1800
+      time: 36000 #10 hrs
   startingGear: SecurityOfficerGear
-  icon: "SecurityOfficer"
+  icon: "JobIconSecurityOfficer"
   supervisors: job-supervisors-hos
   canBeAntag: false
   access:
@@ -16,19 +17,18 @@
   - Maintenance
   - Service
   - External
+  - Cryogenics
+  special:
+  - !type:AddImplantSpecial
+    implants: [ MindShieldImplant ]
 
 - type: startingGear
   id: SecurityOfficerGear
   equipment:
-    jumpsuit: ClothingUniformJumpsuitSec
-    back: ClothingBackpackSecurityFilled
-    shoes: ClothingShoesBootsJack
     eyes: ClothingEyesGlassesSecurity
-    head: ClothingHeadHelmetHelmetOld
-    outerClothing: ClothingOuterVestKevlar
-    id: SecurityPDA
     ears: ClothingHeadsetSecurity
-    belt: ClothingBeltSecurityFilled
-  innerclothingskirt: ClothingUniformJumpskirtSec
-  satchel: ClothingBackpackSatchelSecurityFilled
-  duffelbag: ClothingBackpackDuffelSecurityFilled
+    pocket1: WeaponPistolMk58
+  storage:
+    back:
+    - Flash
+    - MagazinePistol

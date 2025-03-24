@@ -12,34 +12,39 @@
   - type: Transform
     anchored: true
   - type: Sprite
-    netsync: false
     sprite: Structures/conveyor.rsi
     state: conveyor_started_cw
-    drawdepth: FloorObjects
+    drawdepth: HighFloorObjects
   - type: ApcPowerReceiver
   - type: ExtensionCableReceiver
   - type: Physics
     bodyType: Static
   - type: Fixtures
     fixtures:
-    - id: conveyor
-      shape: !type:PolygonShape
-        vertices:
-        - -0.55,-0.55
-        - 0.55,-0.55
-        - 0.55,0.55
-        - -0.55,0.55
-      layer:
-      - Impassable
-      - MidImpassable
-      - LowImpassable
-      hard: False
+      conveyor:
+        shape: !type:PolygonShape
+          vertices:
+          - -0.49,-0.49
+          - 0.49,-0.49
+          - 0.49,0.49
+          - -0.49,0.49
+        layer:
+        - Impassable
+        - MidImpassable
+        - LowImpassable
+        - DoorPassable
+        hard: False
   - type: Conveyor
-  - type: SignalReceiver
-    inputs:
-      Reverse: []
-      Forward: []
-      Off: []
+  - type: DeviceNetwork
+    deviceNetId: Wireless
+    receiveFrequencyId: BasicDevice
+  - type: WirelessNetworkConnection
+    range: 200
+  - type: DeviceLinkSink
+    ports:
+      - Reverse
+      - Forward
+      - Off
   - type: Appearance
   - type: GenericVisualizer
     visuals:
@@ -52,7 +57,7 @@
     graph: ConveyorGraph
     node: entity
   - type: Damageable
-    damageContainer: Inorganic
+    damageContainer: StructuralInorganic
     damageModifierSet: Metallic
   - type: Destructible
     thresholds:
@@ -75,7 +80,6 @@
     tags:
     - ConveyorAssembly
   - type: Sprite
-    netsync: false
     sprite: Structures/conveyor.rsi
     state: conveyor_loose
   - type: Construction

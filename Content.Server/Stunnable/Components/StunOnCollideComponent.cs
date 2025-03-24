@@ -4,7 +4,7 @@ namespace Content.Server.Stunnable.Components
     /// Adds stun when it collides with an entity
     /// </summary>
     [RegisterComponent, Access(typeof(StunOnCollideSystem))]
-    public sealed class StunOnCollideComponent : Component
+    public sealed partial class StunOnCollideComponent : Component
     {
         // TODO: Can probably predict this.
 
@@ -27,6 +27,6 @@ namespace Content.Server.Stunnable.Components
         /// <summary>
         /// Fixture we track for the collision.
         /// </summary>
-        [ViewVariables, DataField("fixture")] public string FixtureID = "projectile";
+        [DataField("fixture")] public string FixtureID = "projectile";
     }
 }

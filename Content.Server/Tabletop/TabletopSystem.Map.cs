@@ -1,5 +1,7 @@
+using System.Numerics;
 using Content.Shared.GameTicking;
 using Robust.Shared.Map;
+using Robust.Shared.Map.Components;
 
 namespace Content.Server.Tabletop
 {
@@ -48,12 +50,13 @@ namespace Content.Server.Tabletop
 
             TabletopMap = _mapManager.CreateMap();
             _tabletops = 0;
+            var mapUid = _mapManager.GetMapEntityId(TabletopMap);
 
-            var mapComp = EntityManager.GetComponent<MapComponent>(_mapManager.GetMapEntityId(TabletopMap));
+            var mapComp = EntityManager.GetComponent<MapComponent>(mapUid);
 
             // Lighting is always disabled in tabletop world.
             mapComp.LightingEnabled = false;
-            mapComp.Dirty();
+            Dirty(mapUid, mapComp);
         }
 
         /// <summary>

@@ -1,21 +1,25 @@
 - type: entity
-  id: BodyBag_Container
+  id: BodyBag
+  parent: BaseDeployFoldable
   name: body bag
-  description: A plastic bag designed for the storage and transportation of cadavers.
+  description: A plastic bag designed for the storage and transportation of cadavers to stop body decomposition.
   components:
   - type: Item
-    size: 6
+    size: Small
+    heldPrefix: bag
   - type: Sprite
-    netsync: false
     drawdepth: SmallObjects # I guess body bags need appear above a coroner's table?
     sprite: Objects/Specific/Medical/Morgue/bodybags.rsi
     layers:
     - state: bag
-      map: ["enum.FoldableVisualLayers.Base"]
+      map: ["unfoldedLayer", "enum.StorageVisualLayers.Base"]
+    - state: bag_folded
+      map: ["foldedLayer"]
+      visible: false
     - state: open_overlay
       map: ["enum.StorageVisualLayers.Door"]
-    - state: label_overlay
-      map: ["enum.BodyBagVisualLayers.Label"]
+    - state: paper
+      map: ["enum.PaperLabelVisuals.Layer"]
   - type: Icon
     sprite: Objects/Specific/Medical/Morgue/bodybags.rsi
     state: bag
@@ -31,40 +35,57 @@
     noRot: true
   - type: Fixtures
     fixtures:
-    - shape:
-        !type:PhysShapeAabb
-        bounds: "-0.25,-0.4,0.25,0.1"
-      density: 20
-      mask:
-      - Impassable
+      fix1:
+        shape:
+          !type:PhysShapeAabb
+          bounds: "-0.25,-0.4,0.25,0.1"
+        density: 20
+        mask:
+        - ItemMask
   - type: EntityStorage
     capacity: 1
     isCollidableWhenOpen: true
+    whitelist: # Use a tag whitelist rather than filtering for PerishableComponent to avoid chefs using body bags for food preservation
+      tags:
+        - VimPilot # Pets
+        - CanPilot # People
     closeSound:
       path: /Audio/Misc/zip.ogg
     openSound:
       path: /Audio/Misc/zip.ogg
   - type: EntityStorageLayingDownOverride
-  - type: Foldable
   - type: PaperLabel
     labelSlot:
-      insertVerbText: Attach Label
-      ejectVerbText: Remove Label
+      insertVerbText: comp-paper-label-insert
+      ejectVerbText: comp-paper-label-eject
       whitelist:
         components:
         - Paper
+      blacklist:
+        tags:
+        - Book
   - type: Appearance
-    visuals:
-    - type: StorageVisualizer
-      state_open: open_overlay
-    - type: FoldableVisualizer
-      key: bag
+  - type: EntityStorageVisuals
+    stateDoorOpen: open_overlay
   - type: GenericVisualizer
     visuals:
       enum.PaperLabelVisuals.HasLabel:
-        enum.BodyBagVisualLayers.Label:
+        enum.PaperLabelVisuals.Layer:
           True: {visible: true}
           False: {visible: false}
+      enum.PaperLabelVisuals.LabelType:
+        enum.PaperLabelVisuals.Layer:
+          Paper: { state: paper }
+          Bounty: { state: bounty }
+          CaptainsPaper: { state: captains_paper }
+          Invoice: { state: invoice }
+      enum.FoldedVisuals.State:
+        foldedLayer:
+          True: {visible: true}
+          False: {visible: false}
+        unfoldedLayer:
+          True: {visible: false}
+          False: {visible: true}
   - type: Pullable
   - type: AntiRottingContainer
   - type: ItemSlots
@@ -76,10 +97,10 @@
     price: 50
 
 - type: entity
-  id: BodyBag_Folded
+  id: BodyBagFolded
   name: body bag
-  description: A plastic bag designed for the storage and transportation of cadavers.
-  parent: BodyBag_Container
+  description: A plastic bag designed for the storage and transportation of cadavers to stop body decomposition.
+  parent: BodyBag
   suffix: folded
   components:
   - type: Foldable
@@ -95,8 +116,9 @@
   name: ash
   description: This used to be something, but now it's not.
   components:
+  - type: Item
+    size: Tiny
   - type: Sprite
-    netsync: false
     sprite: Objects/Materials/materials.rsi
     state: ash
   - type: Tag
@@ -112,6 +134,33 @@
   - type: SolutionSpiker
     sourceSolution: food
     ignoreEmpty: true
-  - type: DeleteOnTrigger
+  - type: ScoopableSolution
+    solution: food
   - type: Extractable
     grindableSolutionName: food
+
+- type: entity
+  parent: Ash
+  id: Ectoplasm
+  name: ectoplasm
+  description: Much less deadly in this form.
+  components:
+    - type: Sprite
+      sprite: Mobs/Ghosts/revenant.rsi
+      state: ectoplasm
+    - type: Tag
+      tags:
+        - Trash
+        - Ectoplasm
+    - type: SolutionContainerManager
+      solutions:
+        food:
+          maxVol: 50
+          reagents:
+            - ReagentId: Ash
+              Quantity: 25
+            - ReagentId: Necrosol
+              Quantity: 25
+    - type: GuideHelp
+      guides:
+      - MinorAntagonists

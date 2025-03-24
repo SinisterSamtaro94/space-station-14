@@ -5,8 +5,10 @@ using Content.Shared.Administration;
 using Content.Shared.Radiation.Events;
 using Content.Shared.Radiation.Systems;
 using Robust.Shared.Console;
+using Robust.Shared.Debugging;
 using Robust.Shared.Enums;
-using Robust.Shared.Players;
+using Robust.Shared.Map.Components;
+using Robust.Shared.Player;
 
 namespace Content.Server.Radiation.Systems;
 
@@ -33,7 +35,7 @@ public partial class RadiationSystem
         }
 
         var ev = new OnRadiationOverlayToggledEvent(isEnabled);
-        RaiseNetworkEvent(ev, session.ConnectedClient);
+        RaiseNetworkEvent(ev, session.Channel);
     }
 
     /// <summary>
@@ -41,12 +43,12 @@ public partial class RadiationSystem
     /// </summary>
     private void UpdateDebugOverlay(EntityEventArgs ev)
     {
-        var sessions = _debugSessions.ToArray();
-        foreach (var session in sessions)
+        foreach (var session in _debugSessions)
         {
             if (session.Status != SessionStatus.InGame)
                 _debugSessions.Remove(session);
-            RaiseNetworkEvent(ev, session.ConnectedClient);
+            else
+                RaiseNetworkEvent(ev, session);
         }
     }
 
@@ -55,30 +57,30 @@ public partial class RadiationSystem
         if (_debugSessions.Count == 0)
             return;
 
-        var query = GetEntityQuery<RadiationGridResistanceComponent>();
-        var dict = new Dictionary<EntityUid, Dictionary<Vector2i, float>>();
+        var dict = new Dictionary<NetEntity, Dictionary<Vector2i, float>>();
 
-        foreach (var grid in _mapManager.GetAllGrids())
+        var gridQuery = AllEntityQuery<MapGridComponent, RadiationGridResistanceComponent>();
+
+        while (gridQuery.MoveNext(out var gridUid, out _, out var resistance))
         {
-            var gridUid = grid.GridEntityId;
-            if (!query.TryGetComponent(gridUid, out var resistance))
-                continue;
-
             var resMap = resistance.ResistancePerTile;
-            dict.Add(gridUid, resMap);
+            dict.Add(GetNetEntity(gridUid), resMap);
         }
 
         var ev = new OnRadiationOverlayResistanceUpdateEvent(dict);
         UpdateDebugOverlay(ev);
     }
 
-    private void UpdateGridcastDebugOverlay(double elapsedTime, int totalSources,
-        int totalReceivers, List<RadiationRay> rays)
+    private void UpdateGridcastDebugOverlay(
+        double elapsedTime,
+        int totalSources,
+        int totalReceivers,
+        List<DebugRadiationRay>? rays)
     {
         if (_debugSessions.Count == 0)
             return;
 
-        var ev = new OnRadiationOverlayUpdateEvent(elapsedTime, totalSources, totalReceivers, rays);
+        var ev = new OnRadiationOverlayUpdateEvent(elapsedTime, totalSources, totalReceivers, rays ?? new());
         UpdateDebugOverlay(ev);
     }
 }

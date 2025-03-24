@@ -1,7 +1,7 @@
 # Base
 
 - type: entity
-  parent: FoodInjectableBase
+  parent: [FoodInjectableBase, ItemHeftyBase]
   id: FoodEggBase
   description: An egg!
   abstract: true
@@ -9,14 +9,15 @@
   - type: Tag
     tags:
       - Egg
+      - Meat
   - type: Food
-    trash: Eggshells
+    trash:
+    - Eggshells
   - type: Sprite
     sprite: Objects/Consumable/Food/egg.rsi
   - type: Item
     sprite: Objects/Consumable/Food/egg.rsi
-    netsync: false
-    size: 1
+    size: Tiny
   - type: SolutionContainerManager
     solutions:
       food:
@@ -24,20 +25,13 @@
         reagents:
         - ReagentId: Egg
           Quantity: 6
+  - type: DrawableSolution
+    solution: food
   - type: SolutionSpiker
     sourceSolution: food
     ignoreEmpty: true
     popup: spike-solution-egg
-  - type: DeleteOnTrigger
-  - type: DamageOnLand
-    damage:
-      types:
-        Blunt: 1
-  - type: DamageOtherOnHit
-    damage:
-      types:
-        Blunt: 1
-       #Dignity: 25
+  # egg fragile
   - type: DamageOnHighSpeedImpact
     minimumSpeed: 0.1
     damage:
@@ -54,42 +48,21 @@
       - !type:PlaySoundBehavior
         sound:
           collection: desecration
+      - !type:SpillBehavior
+        solution: food
       - !type:SpawnEntitiesBehavior
         spawn:
           Eggshells:
             min: 1
             max: 1
-          PuddleEgg:
-            min: 1
-            max: 2
           # Wow double-yolk you're so lucky!
       - !type:DoActsBehavior
         acts: [ "Destruction" ]
+  # all below are for egg cooking/exploding
+  - type: AtmosExposed
+  - type: Temperature
 
 # Splat
-
-- type: entity
-  name: egg
-  id: PuddleEgg
-  parent: PuddleBase
-  description: If the floor was a little hotter this would fry.
-  components:
-  - type: Sprite
-    sprite: Fluids/egg_splat.rsi
-    state: egg-0
-    netsync: false
-  - type: Puddle
-  - type: SolutionContainerManager
-    solutions:
-      puddle:
-        reagents:
-        - ReagentId: Egg
-          Quantity: 2
-  - type: Evaporation
-  - type: Appearance
-    visuals:
-    - type: PuddleVisualizer
-
 - type: entity
   name: eggshells
   parent: BaseItem
@@ -100,9 +73,8 @@
   - type: Sprite
     sprite: Objects/Consumable/Food/egg.rsi
     state: eggshells
-    netsync: false
   - type: Item
-    size: 1
+    size: Tiny
   - type: SolutionContainerManager
     solutions:
       food:
@@ -114,7 +86,6 @@
     tags:
     - Egg
     - Trash
-  - type: Recyclable
   - type: SpaceGarbage
 
 # Egg
@@ -125,14 +96,35 @@
   name: egg
   components:
   - type: Sprite
-    sprite: Objects/Consumable/Food/egg.rsi
     layers:
       - state: icon
         map: [ "enum.DamageStateVisualLayers.Base" ]
-    netsync: false
   - type: RandomSprite
     available:
       - enum.DamageStateVisualLayers.Base:
           icon: ""
-      - enum.DamageStateVisualLayers.Base:
           white: ""
+  - type: Construction
+    graph: Egg
+    node: start
+
+- type: entity
+  parent: FoodEggBase
+  id: FoodEggBoiled
+  name: boiled egg
+  description: A delicious hardboiled egg.
+  components:
+  - type: Sprite
+    layers:
+    - state: icon
+      map: [ "enum.DamageStateVisualLayers.Base" ]
+  - type: SolutionContainerManager
+    solutions:
+      food:
+        maxVol: 6
+        reagents:
+        - ReagentId: EggCooked
+          Quantity: 6
+  - type: Temperature
+    # preserve temperature from the boiling step
+    currentTemperature: 344

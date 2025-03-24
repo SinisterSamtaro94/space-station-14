@@ -16,6 +16,7 @@ public sealed partial class AdminLogManager
 
     // TODO ADMIN LOGS make this thread safe or remove thread safety from the main partial class
     private readonly Dictionary<int, List<SharedAdminLog>> _roundsLogCache = new(MaxRoundsCached);
+    private readonly Queue<int> _roundsLogCacheQueue = new();
 
     private static readonly Gauge CacheRoundCount = Metrics.CreateGauge(
         "admin_logs_cache_round_count",
@@ -28,18 +29,20 @@ public sealed partial class AdminLogManager
     // TODO ADMIN LOGS cache previous {MaxRoundsCached} rounds on startup
     public void CacheNewRound()
     {
-        List<SharedAdminLog> list;
-        var oldestRound = _currentRoundId - MaxRoundsCached;
+        List<SharedAdminLog>? list = null;
 
-        if (_roundsLogCache.Remove(oldestRound, out var oldestList))
+        _roundsLogCacheQueue.Enqueue(_currentRoundId);
+        if (_roundsLogCacheQueue.Count > MaxRoundsCached)
         {
-            list = oldestList;
-            list.Clear();
+            var oldestRound = _roundsLogCacheQueue.Dequeue();
+            if (_roundsLogCache.Remove(oldestRound, out var oldestList))
+            {
+                list = oldestList;
+                list.Clear();
+            }
         }
-        else
-        {
-            list = new List<SharedAdminLog>(LogListInitialSize);
-        }
+
+        list ??= new List<SharedAdminLog>(LogListInitialSize);
 
         _roundsLogCache.Add(_currentRoundId, list);
         CacheRoundCount.Set(_roundsLogCache.Count);
@@ -51,11 +54,6 @@ public sealed partial class AdminLogManager
         var record = new SharedAdminLog(log.Id, log.Type, log.Impact, log.Date, log.Message, players);
 
         CacheLog(record);
-    }
-
-    private void CacheLog(QueuedLog log)
-    {
-        CacheLog(log.Log);
     }
 
     private void CacheLog(SharedAdminLog log)
@@ -122,14 +120,25 @@ public sealed partial class AdminLogManager
             query = query.Where(log => log.Date > filter.After);
         }
 
-        if (filter.AnyPlayers != null)
+        if (filter.IncludePlayers)
         {
-            query = query.Where(log => filter.AnyPlayers.Any(filterPlayer => log.Players.Contains(filterPlayer)));
-        }
+            if (filter.AnyPlayers != null)
+            {
+                query = query.Where(log =>
+                    filter.AnyPlayers.Any(filterPlayer => log.Players.Contains(filterPlayer)) ||
+                    log.Players.Length == 0 && filter.IncludeNonPlayers);
+            }
 
-        if (filter.AllPlayers != null)
+            if (filter.AllPlayers != null)
+            {
+                query = query.Where(log =>
+                    filter.AllPlayers.All(filterPlayer => log.Players.Contains(filterPlayer)) ||
+                    log.Players.Length == 0 && filter.IncludeNonPlayers);
+            }
+        }
+        else
         {
-            query = query.Where(log => filter.AllPlayers.All(filterPlayer => log.Players.Contains(filterPlayer)));
+            query = query.Where(log => log.Players.Length == 0);
         }
 
         if (filter.LogsSent != 0)

@@ -29,11 +29,13 @@ public abstract partial class SharedGunSystem
 
     private void OnBatteryHandleState(EntityUid uid, BatteryAmmoProviderComponent component, ref ComponentHandleState args)
     {
-        if (args.Current is not BatteryAmmoProviderComponentState state) return;
+        if (args.Current is not BatteryAmmoProviderComponentState state)
+            return;
 
         component.Shots = state.Shots;
         component.Capacity = state.MaxShots;
         component.FireCost = state.FireCost;
+        UpdateAmmoCount(uid, prediction: false);
     }
 
     private void OnBatteryGetState(EntityUid uid, BatteryAmmoProviderComponent component, ref ComponentGetState args)
@@ -56,7 +58,8 @@ public abstract partial class SharedGunSystem
         var shots = Math.Min(args.Shots, component.Shots);
 
         // Don't dirty if it's an empty fire.
-        if (shots == 0) return;
+        if (shots == 0)
+            return;
 
         for (var i = 0; i < shots; i++)
         {
@@ -66,7 +69,7 @@ public abstract partial class SharedGunSystem
 
         TakeCharge(uid, component);
         UpdateBatteryAppearance(uid, component);
-        Dirty(component);
+        Dirty(uid, component);
     }
 
     private void OnBatteryAmmoCount(EntityUid uid, BatteryAmmoProviderComponent component, ref GetAmmoCountEvent args)
@@ -78,7 +81,10 @@ public abstract partial class SharedGunSystem
     /// <summary>
     /// Update the battery (server-only) whenever fired.
     /// </summary>
-    protected virtual void TakeCharge(EntityUid uid, BatteryAmmoProviderComponent component) {}
+    protected virtual void TakeCharge(EntityUid uid, BatteryAmmoProviderComponent component)
+    {
+        UpdateAmmoCount(uid, prediction: false);
+    }
 
     protected void UpdateBatteryAppearance(EntityUid uid, BatteryAmmoProviderComponent component)
     {
@@ -90,15 +96,15 @@ public abstract partial class SharedGunSystem
         Appearance.SetData(uid, AmmoVisuals.AmmoMax, component.Capacity, appearance);
     }
 
-    private IShootable GetShootable(BatteryAmmoProviderComponent component, EntityCoordinates coordinates)
+    private (EntityUid? Entity, IShootable) GetShootable(BatteryAmmoProviderComponent component, EntityCoordinates coordinates)
     {
         switch (component)
         {
             case ProjectileBatteryAmmoProviderComponent proj:
                 var ent = Spawn(proj.Prototype, coordinates);
-                return EnsureComp<AmmoComponent>(ent);
+                return (ent, EnsureShootable(ent));
             case HitscanBatteryAmmoProviderComponent hitscan:
-                return ProtoManager.Index<HitscanPrototype>(hitscan.Prototype);
+                return (null, ProtoManager.Index<HitscanPrototype>(hitscan.Prototype));
             default:
                 throw new ArgumentOutOfRangeException();
         }

@@ -1,17 +1,9 @@
-using Content.Client.Construction.UI;
+using System.Numerics;
+using Content.Client.Changelog;
 using Content.Client.Hands;
 using Content.Client.UserInterface.Controls;
 using Content.Client.UserInterface.Screens;
-using Content.Client.UserInterface.Systems.Actions;
-using Content.Client.UserInterface.Systems.Alerts;
-using Content.Client.UserInterface.Systems.Chat;
-using Content.Client.UserInterface.Systems.Ghost;
-using Content.Client.UserInterface.Systems.Hands;
-using Content.Client.UserInterface.Systems.Hotbar;
-using Content.Client.UserInterface.Systems.Hotbar.Widgets;
-using Content.Client.UserInterface.Systems.Inventory;
-using Content.Client.UserInterface.Systems.MenuBar;
-using Content.Client.UserInterface.Systems.Viewport;
+using Content.Client.UserInterface.Systems.Gameplay;
 using Content.Client.Viewport;
 using Content.Shared.CCVar;
 using Robust.Client.Graphics;
@@ -21,44 +13,31 @@ using Robust.Client.UserInterface.Controls;
 using Robust.Client.UserInterface.CustomControls;
 using Robust.Shared.Configuration;
 using Robust.Shared.Timing;
-using Robust.Client.Player;
-using Robust.Client.GameObjects;
 
 namespace Content.Client.Gameplay
 {
-    public sealed class GameplayState : GameplayStateBase, IMainViewportState
+    [Virtual]
+    public class GameplayState : GameplayStateBase, IMainViewportState
     {
         [Dependency] private readonly IEyeManager _eyeManager = default!;
         [Dependency] private readonly IOverlayManager _overlayManager = default!;
         [Dependency] private readonly IGameTiming _gameTiming = default!;
-        [Dependency] private readonly IPlayerManager _playerMan = default!;
         [Dependency] private readonly IUserInterfaceManager _uiManager = default!;
+        [Dependency] private readonly ChangelogManager _changelog = default!;
         [Dependency] private readonly IConfigurationManager _configurationManager = default!;
-        [Dependency] private readonly IEntityManager _entMan = default!;
 
         private FpsCounter _fpsCounter = default!;
+        private Label _version = default!;
 
         public MainViewport Viewport => _uiManager.ActiveScreen!.GetWidget<MainViewport>()!;
 
-        private readonly GhostUIController _ghostController;
-        private readonly ActionUIController _actionController;
-        private readonly AlertsUIController _alertsController;
-        private readonly HotbarUIController _hotbarController;
-        private readonly ChatUIController _chatController;
-        private readonly ViewportUIController _viewportController;
-        private readonly GameTopMenuBarUIController _menuController;
+        private readonly GameplayStateLoadController _loadController;
 
         public GameplayState()
         {
             IoCManager.InjectDependencies(this);
 
-            _ghostController = _uiManager.GetUIController<GhostUIController>();
-            _actionController = _uiManager.GetUIController<ActionUIController>();
-            _alertsController = _uiManager.GetUIController<AlertsUIController>();
-            _hotbarController = _uiManager.GetUIController<HotbarUIController>();
-            _chatController = _uiManager.GetUIController<ChatUIController>();
-            _viewportController = _uiManager.GetUIController<ViewportUIController>();
-            _menuController = _uiManager.GetUIController<GameTopMenuBarUIController>();
+            _loadController = _uiManager.GetUIController<GameplayStateLoadController>();
         }
 
         protected override void Startup()
@@ -66,6 +45,7 @@ namespace Content.Client.Gameplay
             base.Startup();
 
             LoadMainScreen();
+            _configurationManager.OnValueChanged(CCVars.UILayout, ReloadMainScreenValueChange);
 
             // Add the hand-item overlay.
             _overlayManager.AddOverlay(new ShowHandItemOverlay());
@@ -76,7 +56,24 @@ namespace Content.Client.Gameplay
             UserInterfaceManager.PopupRoot.AddChild(_fpsCounter);
             _fpsCounter.Visible = _configurationManager.GetCVar(CCVars.HudFpsCounterVisible);
             _configurationManager.OnValueChanged(CCVars.HudFpsCounterVisible, (show) => { _fpsCounter.Visible = show; });
-            _configurationManager.OnValueChanged(CCVars.UILayout, ReloadMainScreenValueChange);
+
+            // Version number watermark.
+            _version = new Label();
+            _version.FontColorOverride = Color.FromHex("#FFFFFF20");
+            _version.Text = _changelog.GetClientVersion();
+            UserInterfaceManager.PopupRoot.AddChild(_version);
+            _configurationManager.OnValueChanged(CCVars.HudVersionWatermark, (show) => { _version.Visible = VersionVisible(); }, true);
+            _configurationManager.OnValueChanged(CCVars.ForceClientHudVersionWatermark, (show) => { _version.Visible = VersionVisible(); }, true);
+            // TODO make this centered or something
+            LayoutContainer.SetPosition(_version, new Vector2(70, 0));
+        }
+
+        // This allows servers to force the watermark on clients
+        private bool VersionVisible()
+        {
+            var client = _configurationManager.GetCVar(CCVars.HudVersionWatermark);
+            var server = _configurationManager.GetCVar(CCVars.ForceClientHudVersionWatermark);
+            return client || server;
         }
 
         protected override void Shutdown()
@@ -110,10 +107,7 @@ namespace Content.Client.Gameplay
 
         private void UnloadMainScreen()
         {
-            _chatController.SetMainChat(false);
-            _menuController.UnloadButtons();
-            _ghostController.UnloadGui();
-            _actionController.UnloadGui();
+            _loadController.UnloadScreen();
             _uiManager.UnloadScreen();
         }
 
@@ -135,21 +129,8 @@ namespace Content.Client.Gameplay
                     break;
             }
 
-            _chatController.SetMainChat(true);
-            _viewportController.ReloadViewport();
-            _menuController.LoadButtons();
-
-            // TODO: This could just be like, the equivalent of an event or something
-            _ghostController.LoadGui();
-            _actionController.LoadGui();
-            _alertsController.SyncAlerts();
-            _hotbarController.ReloadHotbar();
-
-            var viewportContainer = _uiManager.ActiveScreen!.FindControl<LayoutContainer>("ViewportContainer");
-            _chatController.SetSpeechBubbleRoot(viewportContainer);
+            _loadController.LoadScreen();
         }
-
-
 
         protected override void OnKeyBindStateChanged(ViewportBoundKeyEventArgs args)
         {

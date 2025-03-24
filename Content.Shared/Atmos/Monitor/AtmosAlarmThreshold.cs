@@ -3,48 +3,88 @@ using Robust.Shared.Serialization;
 
 namespace Content.Shared.Atmos.Monitor;
 
-// mostly based around floats and percentages, no literals
-// except for the range boundaries
+
 [Prototype("alarmThreshold")]
-[Serializable, NetSerializable]
-public sealed class AtmosAlarmThreshold : IPrototype, ISerializationHooks
+public sealed partial class AtmosAlarmThresholdPrototype : IPrototype
 {
     [IdDataField]
-    public string ID { get; } = default!;
-    [ViewVariables]
+    public string ID { get; private set; } = default!;
+
     [DataField("ignore")]
     public bool Ignore;
 
-    // zero bounds are not allowed - just
-    // set the bound to null if you want
-    // to disable it
-    [ViewVariables]
     [DataField("upperBound")]
-    public float? UpperBound { get; private set; }
+    public AlarmThresholdSetting UpperBound = AlarmThresholdSetting.Disabled;
 
-    [ViewVariables]
     [DataField("lowerBound")]
-    public float? LowerBound { get; private set; }
+    public AlarmThresholdSetting LowerBound = AlarmThresholdSetting.Disabled;
 
-    // upper warning percentage
-    // must always cause UpperWarningBound
-    // to be smaller
-    [ViewVariables]
     [DataField("upperWarnAround")]
-    public float? UpperWarningPercentage { get; private set; }
+    public AlarmThresholdSetting UpperWarningPercentage = AlarmThresholdSetting.Disabled;
 
-    // lower warning percentage
-    // must always cause LowerWarningBound
-    // to be larger
-    [ViewVariables]
     [DataField("lowerWarnAround")]
-    public float? LowerWarningPercentage { get; private set; }
+    public AlarmThresholdSetting LowerWarningPercentage = AlarmThresholdSetting.Disabled;
+}
+
+[Serializable, NetSerializable, DataDefinition]
+public sealed partial class AtmosAlarmThreshold
+{
+    [DataField("ignore")]
+    public bool Ignore;
+
+    [DataField("upperBound")]
+    private AlarmThresholdSetting _upperBound = AlarmThresholdSetting.Disabled;
+
+    [DataField("lowerBound")]
+    private AlarmThresholdSetting _lowerBound = AlarmThresholdSetting.Disabled;
+
+    [DataField("upperWarnAround")]
+    public AlarmThresholdSetting UpperWarningPercentage = AlarmThresholdSetting.Disabled;
+
+    [DataField("lowerWarnAround")]
+    public AlarmThresholdSetting LowerWarningPercentage = AlarmThresholdSetting.Disabled;
+
+    public AlarmThresholdSetting UpperBound
+    {
+        get => _upperBound;
+        set
+        {
+            // Because the warnings are stored as percentages of the bounds,
+            // Make a copy of the calculated bounds, so that the real warning amount
+            // doesn't change value when user changes the bounds
+            var oldWarning = UpperWarningBound;
+            _upperBound = value;
+            UpperWarningBound = oldWarning;
+        }
+    }
+
+    public AlarmThresholdSetting LowerBound
+    {
+        get => _lowerBound;
+        set
+        {
+            // Because the warnings are stored as percentages of the bounds,
+            // Make a copy of the calculated bounds, so that the real warning amount
+            // doesn't change value when user changes the bounds
+            var oldWarning = LowerWarningBound;
+            _lowerBound = value;
+            LowerWarningBound = oldWarning;
+        }
+    }
 
     [ViewVariables]
-    public float? UpperWarningBound => CalculateWarningBound(AtmosMonitorThresholdBound.Upper);
+    public AlarmThresholdSetting UpperWarningBound
+    {
+        get => CalculateWarningBound(AtmosMonitorThresholdBound.Upper);
+        set => UpperWarningPercentage = CalculateWarningPercentage(AtmosMonitorThresholdBound.Upper, value);
+    }
 
     [ViewVariables]
-    public float? LowerWarningBound => CalculateWarningBound(AtmosMonitorThresholdBound.Lower);
+    public AlarmThresholdSetting LowerWarningBound
+    {
+        get => CalculateWarningBound(AtmosMonitorThresholdBound.Lower);
+        set => LowerWarningPercentage = CalculateWarningPercentage(AtmosMonitorThresholdBound.Lower, value);
+    }
 
     public AtmosAlarmThreshold()
     {
@@ -59,188 +99,268 @@ public sealed class AtmosAlarmThreshold : IPrototype, ISerializationHooks
         LowerWarningPercentage = other.LowerWarningPercentage;
     }
 
-    void ISerializationHooks.AfterDeserialization()
+    public AtmosAlarmThreshold(AtmosAlarmThresholdPrototype proto)
     {
-        if (UpperBound <= LowerBound)
-            UpperBound = null;
-
-        if (LowerBound >= UpperBound)
-            LowerBound = null;
-
-        if (UpperWarningPercentage != null)
-            TrySetWarningBound(AtmosMonitorThresholdBound.Upper, UpperBound * UpperWarningPercentage);
-
-        if (LowerWarningPercentage != null)
-            TrySetWarningBound(AtmosMonitorThresholdBound.Lower, LowerBound * LowerWarningPercentage);
+        Ignore = proto.Ignore;
+        UpperBound = proto.UpperBound;
+        LowerBound = proto.LowerBound;
+        UpperWarningPercentage = proto.UpperWarningPercentage;
+        LowerWarningPercentage = proto.LowerWarningPercentage;
     }
 
     // utility function to check a threshold against some calculated value
     public bool CheckThreshold(float value, out AtmosAlarmType state)
     {
+        return CheckThreshold(value, out state, out AtmosMonitorThresholdBound _);
+    }
+
+    // utility function to check a threshold against some calculated value. If the output state
+    // is normal, whichFailed should not be used..
+    public bool CheckThreshold(float value, out AtmosAlarmType state, out AtmosMonitorThresholdBound whichFailed)
+    {
         state = AtmosAlarmType.Normal;
+        whichFailed = AtmosMonitorThresholdBound.Upper;
+
         if (Ignore)
         {
             return false;
         }
 
-        if (value >= UpperBound || value <= LowerBound)
+        if (value >= UpperBound)
         {
             state = AtmosAlarmType.Danger;
+            whichFailed = AtmosMonitorThresholdBound.Upper;
             return true;
         }
-        if (value >= UpperWarningBound || value <= LowerWarningBound)
+        if(value <= LowerBound)
+        {
+            state = AtmosAlarmType.Danger;
+            whichFailed = AtmosMonitorThresholdBound.Lower;
+            return true;
+        }
+        if (value >= UpperWarningBound)
         {
             state = AtmosAlarmType.Warning;
+            whichFailed = AtmosMonitorThresholdBound.Upper;
             return true;
         }
+        if (value <= LowerWarningBound)
+        {
+            state = AtmosAlarmType.Warning;
+            whichFailed = AtmosMonitorThresholdBound.Lower;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// Warnings are stored in prototypes as a percentage, for ease of content
+    /// maintainers. This recalculates a new "real" value of the warning
+    /// threshold, for use in the actual atmosphereic checks.
+    public AlarmThresholdSetting CalculateWarningBound(AtmosMonitorThresholdBound bound)
+    {
+        switch (bound)
+        {
+            case AtmosMonitorThresholdBound.Upper:
+                return new AlarmThresholdSetting {
+                    Enabled = UpperWarningPercentage.Enabled,
+                    Value = UpperBound.Value * UpperWarningPercentage.Value};
+            case AtmosMonitorThresholdBound.Lower:
+                return new AlarmThresholdSetting {
+                    Enabled = LowerWarningPercentage.Enabled,
+                    Value = LowerBound.Value * LowerWarningPercentage.Value};
+            default:
+                // Unreachable.
+                return new AlarmThresholdSetting();
+        }
+    }
+
+    public AlarmThresholdSetting CalculateWarningPercentage(AtmosMonitorThresholdBound bound, AlarmThresholdSetting warningBound)
+    {
+        switch (bound)
+        {
+            case AtmosMonitorThresholdBound.Upper:
+                return new AlarmThresholdSetting {
+                    Enabled = UpperWarningPercentage.Enabled,
+                    Value = UpperBound.Value == 0 ? 0 : warningBound.Value / UpperBound.Value};
+            case AtmosMonitorThresholdBound.Lower:
+                return new AlarmThresholdSetting {
+                    Enabled = LowerWarningPercentage.Enabled,
+                    Value = LowerBound.Value == 0 ? 0 : warningBound.Value / LowerBound.Value };
+            default:
+                // Unreachable.
+                return new AlarmThresholdSetting();
+        }
+    }
+
+    // Enable or disable a single threshold setting
+    public void SetEnabled(AtmosMonitorLimitType whichLimit, bool isEnabled)
+    {
+        switch(whichLimit)
+        {
+            case AtmosMonitorLimitType.LowerDanger:
+                LowerBound = LowerBound.WithEnabled(isEnabled);
+                break;
+            case AtmosMonitorLimitType.LowerWarning:
+                LowerWarningPercentage = LowerWarningPercentage.WithEnabled(isEnabled);
+                break;
+            case AtmosMonitorLimitType.UpperWarning:
+                UpperWarningPercentage = UpperWarningPercentage.WithEnabled(isEnabled);
+                break;
+            case AtmosMonitorLimitType.UpperDanger:
+                UpperBound = UpperBound.WithEnabled(isEnabled);
+                break;
+        }
+    }
+
+    // Set the limit for a threshold. Will clamp other limits appropriately to
+    // enforce that LowerBound <= LowerWarningBound <= UpperWarningBound <= UpperBound
+    public void SetLimit(AtmosMonitorLimitType whichLimit, float limit)
+    {
+        if (limit <= 0)
+        {
+            // Unit tests expect that setting value of 0 or less should not change the limit.
+            // Feels a bit strange, but does avoid a bug where the warning data (stored as a
+            // percentage of danger bounds) is lost when setting the danger threshold to zero
+            return;
+        }
+
+        switch (whichLimit)
+        {
+            case AtmosMonitorLimitType.LowerDanger:
+                LowerBound = LowerBound.WithThreshold(limit);
+                LowerWarningBound = LowerWarningBound.WithThreshold(Math.Max(limit, LowerWarningBound.Value));
+                UpperWarningBound = UpperWarningBound.WithThreshold(Math.Max(limit, UpperWarningBound.Value));
+                UpperBound = UpperBound.WithThreshold(Math.Max(limit, UpperBound.Value));
+                break;
+            case AtmosMonitorLimitType.LowerWarning:
+                LowerBound = LowerBound.WithThreshold(Math.Min(LowerBound.Value, limit));
+                LowerWarningBound = LowerWarningBound.WithThreshold(limit);
+                UpperWarningBound = UpperWarningBound.WithThreshold(Math.Max(limit, UpperWarningBound.Value));
+                UpperBound = UpperBound.WithThreshold(Math.Max(limit, UpperBound.Value));
+                break;
+            case AtmosMonitorLimitType.UpperWarning:
+                LowerBound = LowerBound.WithThreshold(Math.Min(LowerBound.Value, limit));
+                LowerWarningBound = LowerWarningBound.WithThreshold(Math.Min(LowerWarningBound.Value, limit));
+                UpperWarningBound = UpperWarningBound.WithThreshold(limit);
+                UpperBound = UpperBound.WithThreshold(Math.Max(limit, UpperBound.Value));
+                break;
+            case AtmosMonitorLimitType.UpperDanger:
+                LowerBound = LowerBound.WithThreshold(Math.Min(LowerBound.Value, limit));
+                LowerWarningBound = LowerWarningBound.WithThreshold(Math.Min(LowerWarningBound.Value, limit));
+                UpperWarningBound = UpperWarningBound.WithThreshold(Math.Min(UpperWarningBound.Value, limit));
+                UpperBound = UpperBound.WithThreshold(limit);
+                break;
+        }
+    }
+
+    /// <summary>
+    ///     Iterates through the changes that these threshold settings would make from a
+    ///     previous instance. Basically, diffs the two settings.
+    /// </summary>
+    public IEnumerable<AtmosAlarmThresholdChange> GetChanges(AtmosAlarmThreshold previous)
+    {
+        if (LowerBound != previous.LowerBound)
+            yield return new AtmosAlarmThresholdChange(AtmosMonitorLimitType.LowerDanger, previous.LowerBound, LowerBound);
+
+        if (LowerWarningBound != previous.LowerWarningBound)
+            yield return new AtmosAlarmThresholdChange(AtmosMonitorLimitType.LowerWarning, previous.LowerWarningBound, LowerWarningBound);
+
+        if (UpperBound != previous.UpperBound)
+            yield return new AtmosAlarmThresholdChange(AtmosMonitorLimitType.UpperDanger, previous.UpperBound, UpperBound);
+
+        if (UpperWarningBound != previous.UpperWarningBound)
+            yield return new AtmosAlarmThresholdChange(AtmosMonitorLimitType.UpperWarning, previous.UpperWarningBound, UpperWarningBound);
+    }
+}
+
+/// <summary>
+///     A change of a single value between two AtmosAlarmThreshold, for a given AtmosMonitorLimitType
+/// </summary>
+public readonly struct AtmosAlarmThresholdChange
+{
+    /// <summary>
+    ///     The type of change between the two threshold sets
+    /// </summary>
+    public readonly AtmosMonitorLimitType Type;
+
+    /// <summary>
+    ///     The value in the old threshold set
+    /// </summary>
+    public readonly AlarmThresholdSetting? Previous;
+
+    /// <summary>
+    ///     The value in the new threshold set
+    /// </summary>
+    public readonly AlarmThresholdSetting Current;
+
+    public AtmosAlarmThresholdChange(AtmosMonitorLimitType type, AlarmThresholdSetting? previous, AlarmThresholdSetting current)
+    {
+        Type = type;
+        Previous = previous;
+        Current = current;
+    }
+}
+
+[DataDefinition, Serializable]
+public readonly partial struct AlarmThresholdSetting: IEquatable<AlarmThresholdSetting>
+{
+    [DataField("enabled")]
+    public bool Enabled { get; init; } = true;
+
+    [DataField("threshold")]
+    public float Value { get; init; } = 1;
+
+    public static AlarmThresholdSetting Disabled = new() {Enabled = false, Value = 0};
+
+    public AlarmThresholdSetting()
+    {
+    }
+
+    public static bool operator <=(float a, AlarmThresholdSetting b)
+    {
+        return b.Enabled && a <= b.Value;
+    }
+
+    public static bool operator >=(float a, AlarmThresholdSetting b)
+    {
+        return b.Enabled && a >= b.Value;
+    }
+
+    public AlarmThresholdSetting WithThreshold(float threshold)
+    {
+        return this with {Value = threshold};
+    }
+
+    public AlarmThresholdSetting WithEnabled(bool enabled)
+    {
+        return this with {Enabled = enabled};
+    }
+
+    public bool Equals(AlarmThresholdSetting other)
+    {
+        if (Enabled != other.Enabled)
+            return false;
+
+        if (Value != other.Value)
+            return false;
 
         return true;
     }
 
-    // set the primary bound, takes a hard value
-    public bool TrySetPrimaryBound(AtmosMonitorThresholdBound bound, float? input)
+    public static bool operator ==(AlarmThresholdSetting lhs, AlarmThresholdSetting rhs)
     {
-        if (input == null)
-        {
-            switch (bound)
-            {
-                case AtmosMonitorThresholdBound.Upper:
-                    UpperBound = null;
-                    break;
-                case AtmosMonitorThresholdBound.Lower:
-                    LowerBound = null;
-                    break;
-            }
-
-            return true;
-        }
-
-        var value = (float) input;
-
-        if (value <= 0f || float.IsNaN(value))
-            return false;
-
-        (float target, int compare)? targetValue = null;
-        switch (bound)
-        {
-            case AtmosMonitorThresholdBound.Upper:
-                if (float.IsPositiveInfinity(value))
-                    return false;
-
-                if (LowerBound != null)
-                    targetValue = ((float) LowerBound, -1);
-                break;
-            case AtmosMonitorThresholdBound.Lower:
-                if (float.IsNegativeInfinity(value))
-                    return false;
-
-                if (UpperBound != null)
-                    targetValue = ((float) UpperBound, 1);
-                break;
-        }
-
-        var isValid = true;
-        if (targetValue != null)
-        {
-            var result = targetValue.Value.target.CompareTo(value);
-            isValid = targetValue.Value.compare == result;
-        }
-
-        if (isValid)
-        {
-            switch (bound)
-            {
-                case AtmosMonitorThresholdBound.Upper:
-                    UpperBound = value;
-                    return true;
-                case AtmosMonitorThresholdBound.Lower:
-                    LowerBound = value;
-                    return true;
-            }
-        }
-
-        return false;
+        return lhs.Equals(rhs);
     }
 
-    // set the warning bound, takes a hard value
-    //
-    // this will always set the percentage and
-    // the raw value at the same time
-    public bool TrySetWarningBound(AtmosMonitorThresholdBound bound, float? input)
+    public static bool operator !=(AlarmThresholdSetting lhs, AlarmThresholdSetting rhs)
     {
-        if (input == null)
-        {
-            switch (bound)
-            {
-                case AtmosMonitorThresholdBound.Upper:
-                    UpperWarningPercentage = null;
-                    break;
-                case AtmosMonitorThresholdBound.Lower:
-                    LowerWarningPercentage = null;
-                    break;
-            }
-
-            return true;
-        }
-
-        switch (bound)
-        {
-            case AtmosMonitorThresholdBound.Upper:
-                if (UpperBound == null)
-                    return false;
-
-                var upperWarning = (float) (input / UpperBound);
-                var upperTestValue = upperWarning * (float) UpperBound;
-
-                if (upperWarning > 1f
-                    || upperTestValue < LowerWarningBound
-                    || upperTestValue < LowerBound)
-                    return false;
-
-                UpperWarningPercentage = upperWarning;
-
-                return true;
-            case AtmosMonitorThresholdBound.Lower:
-                if (LowerBound == null)
-                    return false;
-
-                var lowerWarning = (float) (input / LowerBound);
-                var testValue = lowerWarning * (float) LowerBound;
-
-                if (lowerWarning < 1f
-                    || testValue > UpperWarningBound
-                    || testValue > UpperBound)
-                    return false;
-
-                LowerWarningPercentage = lowerWarning;
-
-                return true;
-        }
-
-        return false;
+        return !lhs.Equals(rhs);
     }
 
-    public float? CalculateWarningBound(AtmosMonitorThresholdBound bound)
+    public override int GetHashCode()
     {
-        float? value = null;
-
-        switch (bound)
-        {
-            case AtmosMonitorThresholdBound.Upper:
-                if (UpperBound == null || UpperWarningPercentage == null)
-                    break;
-
-                value = UpperBound * UpperWarningPercentage;
-                break;
-            case AtmosMonitorThresholdBound.Lower:
-                if (LowerBound == null || LowerWarningPercentage == null)
-                    break;
-
-                value = LowerBound * LowerWarningPercentage;
-                break;
-        }
-
-        return value;
+        return HashCode.Combine(Enabled, Value);
     }
 }
 
@@ -248,6 +368,14 @@ public enum AtmosMonitorThresholdBound
 {
     Upper,
     Lower
+}
+
+public enum AtmosMonitorLimitType //<todo.eoin Very similar to the above...
+{
+    LowerDanger,
+    LowerWarning,
+    UpperWarning,
+    UpperDanger,
 }
 
 // not really used in the prototype but in code,

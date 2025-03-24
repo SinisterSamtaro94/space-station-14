@@ -1,461 +1,606 @@
-- type: latheRecipe
-  id: FirelockElectronics
-  icon: Objects/Misc/module.rsi/mainboard.png
-  result: FirelockElectronics
-  completetime: 2
-  materials:
-     Steel: 50
-     Plastic: 50
+# Base protoypes
 
 - type: latheRecipe
-  id: MailingUnitElectronics
-  icon: Objects/Misc/module.rsi/net_wired.png
-  result: MailingUnitElectronics
-  completetime: 4
+  abstract: true
+  id: BaseElectronicsRecipe
+  categories:
+  - Circuitry
+  completetime: 2
+  materials:
+    Steel: 100
+    Plastic: 300
+
+- type: latheRecipe
+  abstract: true
+  parent: BaseElectronicsRecipe
+  id: BaseCheapElectronicsRecipe
   materials:
     Steel: 50
     Plastic: 50
 
 - type: latheRecipe
+  abstract: true
+  parent: BaseElectronicsRecipe
+  id: BaseCheapCircuitboardRecipe
+  materials:
+     Steel: 50
+     Glass: 250
+
+- type: latheRecipe
+  abstract: true
+  parent: BaseElectronicsRecipe
+  id: BaseCircuitboardRecipe
+  completetime: 4
+  materials:
+    Steel: 100
+    Glass: 500
+
+- type: latheRecipe
+  abstract: true
+  parent: BaseCircuitboardRecipe
+  id: BaseGoldCircuitboardRecipe
+  materials:
+    Steel: 100
+    Glass: 500
+    Gold: 100
+
+- type: latheRecipe
+  abstract: true
+  parent: BaseCircuitboardRecipe
+  id: BaseSilverCircuitboardRecipe
+  materials:
+    Steel: 100
+    Glass: 500
+    Silver: 100
+
+- type: latheRecipe
+  abstract: true
+  parent: BaseCircuitboardRecipe
+  id: BaseBananiumCircuitboardRecipe
+  materials:
+    Steel: 100
+    Glass: 500
+    Bananium: 100
+
+# Recipes
+
+- type: latheRecipe
+  parent: BaseCheapElectronicsRecipe
+  id: FirelockElectronics
+  result: FirelockElectronics
+
+- type: latheRecipe
+  parent: BaseElectronicsRecipe
+  id: MailingUnitElectronics
+  result: MailingUnitElectronics
+
+- type: latheRecipe
+  parent: BaseCheapElectronicsRecipe
+  id: CellRechargerCircuitboard
+  result: CellRechargerCircuitboard
+
+- type: latheRecipe
+  parent: CellRechargerCircuitboard
+  id: BorgChargerCircuitboard
+  result: BorgChargerCircuitboard
+
+- type: latheRecipe
+  parent: CellRechargerCircuitboard
+  id: WeaponCapacitorRechargerCircuitboard
+  result: WeaponCapacitorRechargerCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: TurboItemRechargerCircuitboard
+  result: TurboItemRechargerCircuitboard
+
+- type: latheRecipe
+  parent: BaseCheapElectronicsRecipe
   id: DoorElectronics
-  icon: Objects/Misc/module.rsi/door_electronics.png
   result: DoorElectronics
-  completetime: 2
-  materials:
-     Steel: 50
-     Plastic: 50
 
 - type: latheRecipe
+  parent: BaseCheapElectronicsRecipe
+  id: FreezerElectronics
+  result: FreezerElectronics
+
+- type: latheRecipe
+  parent: BaseElectronicsRecipe
   id: AirAlarmElectronics
-  icon: Objects/Misc/module.rsi/airalarm_electronics.png
   result: AirAlarmElectronics
-  completetime: 2
-  materials:
-     Steel: 50
-     Plastic: 50
 
 - type: latheRecipe
+  parent: BaseCheapElectronicsRecipe
+  id: StationMapElectronics
+  result: StationMapCircuitboard
+
+- type: latheRecipe
+  parent: BaseElectronicsRecipe
+  id: IntercomElectronics
+  result: IntercomElectronics
+
+- type: latheRecipe
+  parent: BaseElectronicsRecipe
   id: FireAlarmElectronics
-  icon: Objects/Misc/module.rsi/door_electronics.png
   result: FireAlarmElectronics
-  completetime: 2
-  materials:
-     Steel: 50
-     Plastic: 50
 
 - type: latheRecipe
+  parent: BaseCheapElectronicsRecipe
+  id: SignalTimerElectronics
+  result: SignalTimerElectronics
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: CloningPodMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: CloningPodMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
-     Gold: 100
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: ThermomachineFreezerMachineCircuitBoard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: ThermomachineFreezerMachineCircuitBoard
-  completetime: 4
-  materials:
-    Steel: 150
-    Glass: 900
-    Gold: 50
 
 - type: latheRecipe
+  parent: BaseSilverCircuitboardRecipe
+  id: HellfireFreezerMachineCircuitBoard
+  result: HellfireFreezerMachineCircuitBoard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: CondenserMachineCircuitBoard
+  result: CondenserMachineCircuitBoard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: PortableScrubberMachineCircuitBoard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: PortableScrubberMachineCircuitBoard
-  completetime: 4
-  materials:
-    Steel: 150
-    Glass: 900
-    Gold: 50
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: SpaceHeaterMachineCircuitBoard
+  result: SpaceHeaterMachineCircuitBoard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: MedicalScannerMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: MedicalScannerMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: CryoPodMachineCircuitboard
+  result: CryoPodMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: ChemMasterMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: ChemMasterMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: ChemDispenserMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: ChemDispenserMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
-     Gold: 100
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: BiomassReclaimerMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: BiomassReclaimerMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
-     Gold: 100
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: BiofabricatorMachineCircuitboard
+  result: BiofabricatorMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: HydroponicsTrayMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: HydroponicsTrayMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: AutolatheMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: AutolatheMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: ProtolatheMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: ProtolatheMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: AutolatheHyperConvectionMachineCircuitboard
+  result: AutolatheHyperConvectionMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: ProtolatheHyperConvectionMachineCircuitboard
+  result: ProtolatheHyperConvectionMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: CircuitImprinterMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: CircuitImprinterMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: CircuitImprinterHyperConvectionMachineCircuitboard
+  result: CircuitImprinterHyperConvectionMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: ExosuitFabricatorMachineCircuitboard
+  result: ExosuitFabricatorMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: UniformPrinterMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: UniformPrinterMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: BiogeneratorMachineCircuitboard
+  result: BiogeneratorMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: VaccinatorMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: VaccinatorMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
-     Gold: 100
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: DiagnoserMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: DiagnoserMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
-     Gold: 100
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: ArtifactAnalyzerMachineCircuitboard
-  icon: Objects/Misc/module.rsi/science.png
   result: ArtifactAnalyzerMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
-     Gold: 100
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: ArtifactCrusherMachineCircuitboard
+  result: ArtifactCrusherMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: AnomalyVesselCircuitboard
+  result: AnomalyVesselCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: AnomalyVesselExperimentalCircuitboard
+  result: AnomalyVesselExperimentalCircuitboard
+
+- type: latheRecipe
+  parent: BaseSilverCircuitboardRecipe
+  id: AnomalySynchronizerCircuitboard
+  result: AnomalySynchronizerCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: APECircuitboard
+  result: APECircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: ReagentGrinderMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: ReagentGrinderMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: HotplateMachineCircuitboard
+  result: HotplateMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: AnalysisComputerCircuitboard
-  icon: Objects/Misc/module.rsi/cpu_science.png
   result: AnalysisComputerCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
-     Gold: 100
 
 - type: latheRecipe
-  id: CrewMonitoringComputerCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
-  result: CrewMonitoringComputerCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
+  parent: BaseGoldCircuitboardRecipe
+  id: TechDiskComputerCircuitboard
+  result: TechDiskComputerCircuitboard
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: ShuttleConsoleCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: ShuttleConsoleCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
-     Gold: 100
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: RadarConsoleCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: RadarConsoleCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: DawInstrumentMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: DawInstrumentMachineCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
 
 - type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
   id: StasisBedMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: StasisBedMachineCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
-    Gold: 100
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: ElectrolysisUnitMachineCircuitboard
+  result: ElectrolysisUnitMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: CentrifugeMachineCircuitboard
+  result: CentrifugeMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: OreProcessorMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: OreProcessorMachineCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
-    Gold: 100
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: OreProcessorIndustrialMachineCircuitboard
+  result: OreProcessorIndustrialMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: SalvageMagnetMachineCircuitboard
+  result: SalvageMagnetMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: RipleyCentralElectronics
+  result: RipleyCentralElectronics
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: RipleyPeripheralsElectronics
+  result: RipleyPeripheralsElectronics
+
+- type: latheRecipe
+  parent: BaseBananiumCircuitboardRecipe
+  id: HonkerCentralElectronics
+  result: HonkerCentralElectronics
+
+- type: latheRecipe
+  parent: BaseBananiumCircuitboardRecipe
+  id: HonkerPeripheralsElectronics
+  result: HonkerPeripheralsElectronics
+
+- type: latheRecipe
+  parent: BaseBananiumCircuitboardRecipe
+  id: HonkerTargetingElectronics
+  result: HonkerTargetingElectronics
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: HamtrCentralElectronics
+  result: HamtrCentralElectronics
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: HamtrPeripheralsElectronics
+  result: HamtrPeripheralsElectronics
+
 # Power
 - type: latheRecipe
+  parent: BaseCheapCircuitboardRecipe
   id: APCElectronics
-  icon: Objects/Misc/module.rsi/charger_APC.png
   result: APCElectronics
-  completetime: 2
-  materials:
-     Steel: 50
-     Glass: 100
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: SubstationMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: SubstationMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 50
-     Glass: 450
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: WallmountSubstationElectronics
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: WallmountSubstationElectronics
-  completetime: 4
-  materials:
-     Steel: 50
-     Glass: 350
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: SMESMachineCircuitboard
-  icon: Objects/Misc/module.rsi/power_mod.png
   result: SMESMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
-  id: GeneratorPlasmaMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
-  result: GeneratorPlasmaMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 50
-     Glass: 350
+  parent: BaseGoldCircuitboardRecipe
+  id: SMESAdvancedMachineCircuitboard
+  result: SMESAdvancedMachineCircuitboard
 
 - type: latheRecipe
-  id: GeneratorUraniumMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
-  result: GeneratorUraniumMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 50
-     Glass: 350
+  parent: BaseCircuitboardRecipe
+  id: PortableGeneratorPacmanMachineCircuitboard
+  result: PortableGeneratorPacmanMachineCircuitboard
 
 - type: latheRecipe
-  id: WallmountGeneratorElectronics
-  icon: Objects/Misc/module.rsi/id_mod.png
-  result: WallmountGeneratorElectronics
-  completetime: 4
-  materials:
-     Steel: 50
-     Glass: 350
+  parent: PortableGeneratorPacmanMachineCircuitboard
+  id: PortableGeneratorSuperPacmanMachineCircuitboard
+  result: PortableGeneratorSuperPacmanMachineCircuitboard
 
 - type: latheRecipe
-  id: WallmountGeneratorAPUElectronics
-  icon: Objects/Misc/module.rsi/id_mod.png
-  result: WallmountGeneratorAPUElectronics
-  completetime: 4
-  materials:
-     Steel: 50
-     Glass: 350
+  parent: PortableGeneratorPacmanMachineCircuitboard
+  id: PortableGeneratorJrPacmanMachineCircuitboard
+  result: PortableGeneratorJrPacmanMachineCircuitboard
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: SolarControlComputerCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: SolarControlComputerCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
-  id: PowerComputerCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
-  result: PowerComputerCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
+  parent: BaseCircuitboardRecipe
+  id: SolarTrackerElectronics
+  result: SolarTrackerElectronics
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: CloningConsoleComputerCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: CloningConsoleComputerCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: MicrowaveMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: MicrowaveMachineCircuitboard
-  completetime: 4
-  materials:
-     Steel: 100
-     Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: ElectricGrillMachineCircuitboard
+  result: ElectricGrillMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: FatExtractorMachineCircuitboard
+  result: FatExtractorMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: FlatpackerMachineCircuitboard
+  result: FlatpackerMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: SheetifierMachineCircuitboard
+  result: SheetifierMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: SurveillanceCameraRouterCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: SurveillanceCameraRouterCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: SurveillanceCameraWirelessRouterCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: SurveillanceCameraWirelessRouterCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: SurveillanceWirelessCameraAnchoredCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: SurveillanceWirelessCameraAnchoredCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: SurveillanceWirelessCameraMovableCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: SurveillanceWirelessCameraMovableCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: SurveillanceCameraMonitorCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: SurveillanceCameraMonitorCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: SurveillanceWirelessCameraMonitorCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: SurveillanceWirelessCameraMonitorCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: ComputerTelevisionCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: ComputerTelevisionCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: EmitterCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: EmitterCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: ThrusterMachineCircuitboard
+  result: ThrusterMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: GyroscopeMachineCircuitboard
+  result: GyroscopeMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: GasRecyclerMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: GasRecyclerMachineCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
 
 - type: latheRecipe
+  parent: BaseCircuitboardRecipe
   id: SeedExtractorMachineCircuitboard
-  icon: Objects/Misc/module.rsi/id_mod.png
   result: SeedExtractorMachineCircuitboard
-  completetime: 4
-  materials:
-    Steel: 100
-    Glass: 900
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: BoozeDispenserMachineCircuitboard
+  result: BoozeDispenserMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: CargoTelepadMachineCircuitboard
+  result: CargoTelepadMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: SodaDispenserMachineCircuitboard
+  result: SodaDispenserMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: TelecomServerCircuitboard
+  result: TelecomServerCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: MassMediaCircuitboard
+  result: ComputerMassMediaCircuitboard
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: MiniGravityGeneratorCircuitboard
+  result: MiniGravityGeneratorCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: PowerCageRechargerCircuitboard
+  result: PowerCageRechargerCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: ShuttleGunSvalinnMachineGunCircuitboard
+  result: ShuttleGunSvalinnMachineGunCircuitboard
+  completetime: 6
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: ShuttleGunPerforatorCircuitboard
+  result: ShuttleGunPerforatorCircuitboard
+  completetime: 10
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: ShuttleGunKineticCircuitboard
+  result: ShuttleGunKineticCircuitboard
+  completetime: 6
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: ShuttleGunFriendshipCircuitboard
+  result: ShuttleGunFriendshipCircuitboard
+  completetime: 8
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: ShuttleGunDusterCircuitboard
+  result: ShuttleGunDusterCircuitboard
+  completetime: 12
+
+- type: latheRecipe
+  parent: BaseGoldCircuitboardRecipe
+  id: ReagentGrinderIndustrialMachineCircuitboard
+  result: ReagentGrinderIndustrialMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: JukeboxCircuitBoard
+  result: JukeboxCircuitBoard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: CutterMachineCircuitboard
+  result: CutterMachineCircuitboard
+
+- type: latheRecipe
+  parent: BaseCircuitboardRecipe
+  id: HolopadMachineCircuitboard
+  result: HolopadMachineCircuitboard

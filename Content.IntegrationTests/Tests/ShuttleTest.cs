@@ -1,11 +1,10 @@
-using System.Threading.Tasks;
+using System.Numerics;
 using Content.Server.Shuttles.Components;
-using NUnit.Framework;
 using Robust.Shared.GameObjects;
 using Robust.Shared.Map;
-using Robust.Shared.Maths;
 using Robust.Shared.Physics;
 using Robust.Shared.Physics.Components;
+using Robust.Shared.Physics.Systems;
 
 namespace Content.IntegrationTests.Tests
 {
@@ -15,35 +14,43 @@ namespace Content.IntegrationTests.Tests
         [Test]
         public async Task Test()
         {
-            await using var pairTracker = await PoolManager.GetServerClient(new PoolSettings{NoClient = true});
-            var server = pairTracker.Pair.Server;
+            await using var pair = await PoolManager.GetServerClient();
+            var server = pair.Server;
             await server.WaitIdleAsync();
 
             var mapMan = server.ResolveDependency<IMapManager>();
-            var sEntities = server.ResolveDependency<IEntityManager>();
+            var entManager = server.ResolveDependency<IEntityManager>();
+            var physicsSystem = entManager.System<SharedPhysicsSystem>();
 
-            EntityUid gridEnt = default;
+            PhysicsComponent gridPhys = null;
+
+            var map = await pair.CreateTestMap();
 
             await server.WaitAssertion(() =>
             {
-                var mapId = mapMan.CreateMap();
-                var grid = mapMan.CreateGrid(mapId);
-                gridEnt = grid.GridEntityId;
+                var mapId = map.MapId;
+                var grid = map.Grid;
 
-                Assert.That(sEntities.HasComponent<ShuttleComponent>(gridEnt));
-                Assert.That(sEntities.TryGetComponent<PhysicsComponent>(gridEnt, out var physicsComponent));
-                Assert.That(physicsComponent!.BodyType, Is.EqualTo(BodyType.Dynamic));
-                Assert.That(sEntities.GetComponent<TransformComponent>(gridEnt).LocalPosition, Is.EqualTo(Vector2.Zero));
-                physicsComponent.ApplyLinearImpulse(Vector2.One);
+                Assert.Multiple(() =>
+                {
+                    Assert.That(entManager.HasComponent<ShuttleComponent>(grid));
+                    Assert.That(entManager.TryGetComponent(grid, out gridPhys));
+                });
+                Assert.Multiple(() =>
+                {
+                    Assert.That(gridPhys.BodyType, Is.EqualTo(BodyType.Dynamic));
+                    Assert.That(entManager.GetComponent<TransformComponent>(grid).LocalPosition, Is.EqualTo(Vector2.Zero));
+                });
+                physicsSystem.ApplyLinearImpulse(grid, Vector2.One, body: gridPhys);
             });
 
             await server.WaitRunTicks(1);
 
             await server.WaitAssertion(() =>
             {
-                Assert.That<Vector2?>(sEntities.GetComponent<TransformComponent>(gridEnt).LocalPosition, Is.Not.EqualTo(Vector2.Zero));
+                Assert.That(entManager.GetComponent<TransformComponent>(map.Grid).LocalPosition, Is.Not.EqualTo(Vector2.Zero));
             });
-            await pairTracker.CleanReturnAsync();
+            await pair.CleanReturnAsync();
         }
     }
 }

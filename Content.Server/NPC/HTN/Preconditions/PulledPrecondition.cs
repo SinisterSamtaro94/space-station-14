@@ -1,20 +1,21 @@
 using Content.Shared.Pulling;
+using PullingSystem = Content.Shared.Movement.Pulling.Systems.PullingSystem;
 
 namespace Content.Server.NPC.HTN.Preconditions;
 
 /// <summary>
 /// Checks if the owner is being pulled or not.
 /// </summary>
-public sealed class PulledPrecondition : HTNPrecondition
+public sealed partial class PulledPrecondition : HTNPrecondition
 {
-    private SharedPullingSystem _pulling = default!;
+    private PullingSystem _pulling = default!;
 
     [ViewVariables(VVAccess.ReadWrite)] [DataField("isPulled")] public bool IsPulled = true;
 
     public override void Initialize(IEntitySystemManager sysManager)
     {
         base.Initialize(sysManager);
-        _pulling = sysManager.GetEntitySystem<SharedPullingSystem>();
+        _pulling = sysManager.GetEntitySystem<PullingSystem>();
     }
 
     public override bool IsMet(NPCBlackboard blackboard)

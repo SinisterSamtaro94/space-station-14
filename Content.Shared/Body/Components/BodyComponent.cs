@@ -1,36 +1,44 @@
-using Content.Shared.Body.Part;
 using Content.Shared.Body.Prototypes;
 using Content.Shared.Body.Systems;
-using Content.Shared.DragDrop;
 using Robust.Shared.Audio;
+using Robust.Shared.Containers;
 using Robust.Shared.GameStates;
-using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype;
+using Robust.Shared.Prototypes;
 
 namespace Content.Shared.Body.Components;
 
-[RegisterComponent, NetworkedComponent]
+[RegisterComponent, NetworkedComponent, AutoGenerateComponentState]
 [Access(typeof(SharedBodySystem))]
-public sealed class BodyComponent : Component, IDraggable
+public sealed partial class BodyComponent : Component
 {
-    [ViewVariables]
-    [DataField("prototype", customTypeSerializer: typeof(PrototypeIdSerializer<BodyPrototype>))]
-    public readonly string? Prototype;
+    /// <summary>
+    /// Relevant template to spawn for this body.
+    /// </summary>
+    [DataField, AutoNetworkedField]
+    public ProtoId<BodyPrototype>? Prototype;
+
+    /// <summary>
+    /// Container that holds the root body part.
+    /// </summary>
+    /// <remarks>
+    /// Typically is the torso.
+    /// </remarks>
+    [ViewVariables] public ContainerSlot RootContainer = default!;
 
     [ViewVariables]
-    [DataField("root")]
-    public BodyPartSlot Root = default!;
+    public string RootPartSlot => RootContainer.ID;
 
-    [ViewVariables]
-    [DataField("gibSound")]
+    [DataField, AutoNetworkedField]
     public SoundSpecifier GibSound = new SoundCollectionSpecifier("gib");
 
-    bool IDraggable.CanStartDrag(StartDragDropEvent args)
-    {
-        return true;
-    }
+    /// <summary>
+    /// The amount of legs required to move at full speed.
+    /// If 0, then legs do not impact speed.
+    /// </summary>
+    [DataField, AutoNetworkedField]
+    public int RequiredLegs;
 
-    bool IDraggable.CanDrop(CanDropEvent args)
-    {
-        return true;
-    }
+    [ViewVariables]
+    [DataField, AutoNetworkedField]
+    public HashSet<EntityUid> LegEntities = new();
 }

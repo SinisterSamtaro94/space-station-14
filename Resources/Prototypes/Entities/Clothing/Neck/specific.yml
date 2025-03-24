@@ -1,4 +1,4 @@
-﻿- type: entity
+- type: entity
   parent: ClothingNeckBase
   id: ClothingNeckChameleon
   name: striped red scarf
@@ -9,13 +9,12 @@
       tags: [] # ignore "WhitelistChameleon" tag
     - type: Sprite
       sprite: Clothing/Neck/Scarfs/red.rsi
-      netsync: false
     - type: Clothing
       sprite: Clothing/Neck/Scarfs/red.rsi
     - type: ChameleonClothing
-      slot: [neck]
+      slot: [NECK]
       default: ClothingNeckScarfStripedRed
     - type: UserInterface
       interfaces:
-        - key: enum.ChameleonUiKey.Key
+        enum.ChameleonUiKey.Key:
           type: ChameleonBoundUserInterface

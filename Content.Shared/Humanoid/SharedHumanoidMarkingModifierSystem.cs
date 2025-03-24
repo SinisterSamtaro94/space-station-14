@@ -40,16 +40,28 @@ public sealed class HumanoidMarkingModifierBaseLayersSetMessage : BoundUserInter
 [Serializable, NetSerializable]
 public sealed class HumanoidMarkingModifierState : BoundUserInterfaceState
 {
-    public HumanoidMarkingModifierState(MarkingSet markingSet, string species, Color skinColor, Dictionary<HumanoidVisualLayers, CustomBaseLayerInfo> customBaseLayers)
+    // TODO just use the component state, remove the BUI state altogether.
+    public HumanoidMarkingModifierState(
+        MarkingSet markingSet,
+        string species,
+        Sex sex,
+        Color skinColor,
+        Dictionary<HumanoidVisualLayers, CustomBaseLayerInfo> customBaseLayers
+    )
     {
         MarkingSet = markingSet;
         Species = species;
+        Sex = sex;
         SkinColor = skinColor;
         CustomBaseLayers = customBaseLayers;
     }
 
     public MarkingSet MarkingSet { get; }
     public string Species { get; }
+    public Sex Sex { get; }
     public Color SkinColor { get; }
+    public Color EyeColor { get; }
+    public Color? HairColor { get; }
+    public Color? FacialHairColor { get; }
     public Dictionary<HumanoidVisualLayers, CustomBaseLayerInfo> CustomBaseLayers { get; }
 }

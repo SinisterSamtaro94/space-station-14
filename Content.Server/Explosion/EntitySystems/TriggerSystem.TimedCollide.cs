@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using Content.Server.Explosion.Components;
 using Content.Server.Explosion.EntitySystems;
 using Robust.Shared.Physics.Dynamics;
@@ -19,7 +19,7 @@ public sealed partial class TriggerSystem
     {
         //Ensures the entity trigger will have an active component
         EnsureComp<ActiveTriggerOnTimedCollideComponent>(uid);
-        var otherUID = args.OtherFixture.Body.Owner;
+        var otherUID = args.OtherEntity;
         if (component.Colliding.ContainsKey(otherUID))
             return;
         component.Colliding.Add(otherUID, 0);
@@ -27,7 +27,7 @@ public sealed partial class TriggerSystem
 
     private void OnTimerEndCollide(EntityUid uid, TriggerOnTimedCollideComponent component, ref EndCollideEvent args)
     {
-        var otherUID = args.OtherFixture.Body.Owner;
+        var otherUID = args.OtherEntity;
         component.Colliding.Remove(otherUID);
 
         if (component.Colliding.Count == 0 && HasComp<ActiveTriggerOnTimedCollideComponent>(uid))
@@ -42,14 +42,15 @@ public sealed partial class TriggerSystem
 
     private void UpdateTimedCollide(float frameTime)
     {
-        foreach (var (activeTrigger, triggerOnTimedCollide) in EntityQuery<ActiveTriggerOnTimedCollideComponent, TriggerOnTimedCollideComponent>())
+        var query = EntityQueryEnumerator<ActiveTriggerOnTimedCollideComponent, TriggerOnTimedCollideComponent>();
+        while (query.MoveNext(out var uid, out _, out var triggerOnTimedCollide))
         {
             foreach (var (collidingEntity, collidingTimer) in triggerOnTimedCollide.Colliding)
             {
                 triggerOnTimedCollide.Colliding[collidingEntity] += frameTime;
                 if (collidingTimer > triggerOnTimedCollide.Threshold)
                 {
-                    RaiseLocalEvent(activeTrigger.Owner, new TriggerEvent(activeTrigger.Owner, collidingEntity), true);
+                    RaiseLocalEvent(uid, new TriggerEvent(uid, collidingEntity), true);
                     triggerOnTimedCollide.Colliding[collidingEntity] -= triggerOnTimedCollide.Threshold;
                 }
             }

@@ -4,10 +4,12 @@ using Content.Server.DeviceNetwork.Components;
 using Content.Server.DeviceNetwork.Systems;
 using Content.Server.Disposal.Unit.EntitySystems;
 using Content.Server.Power.Components;
-using Content.Server.UserInterface;
+using Content.Shared.DeviceNetwork;
 using Content.Shared.Disposal;
 using Content.Shared.Interaction;
 using Robust.Server.GameObjects;
+using Robust.Shared.Player;
+using Robust.Shared.Utility;
 
 namespace Content.Server.Disposal.Mailing;
 
@@ -34,7 +36,7 @@ public sealed class MailingUnitSystem : EntitySystem
         SubscribeLocalEvent<MailingUnitComponent, DeviceNetworkPacketEvent>(OnPacketReceived);
         SubscribeLocalEvent<MailingUnitComponent, BeforeDisposalFlushEvent>(OnBeforeFlush);
         SubscribeLocalEvent<MailingUnitComponent, ConfigurationSystem.ConfigurationUpdatedEvent>(OnConfigurationUpdated);
-        SubscribeLocalEvent<MailingUnitComponent, ActivateInWorldEvent>(HandleActivate);
+        SubscribeLocalEvent<MailingUnitComponent, ActivateInWorldEvent>(HandleActivate, before: new[] { typeof(DisposalUnitSystem) });
         SubscribeLocalEvent<MailingUnitComponent, DisposalUnitUIStateUpdatedEvent>(OnDisposalUnitUIStateChange);
         SubscribeLocalEvent<MailingUnitComponent, TargetSelectedMessage>(OnTargetSelected);
     }
@@ -57,8 +59,8 @@ public sealed class MailingUnitSystem : EntitySystem
                 break;
             case NetCmdResponse when args.Data.TryGetValue(NetTag, out string? tag):
                 //Add the received tag request response to the list of targets
-                component.TargetList.Add(tag!);
-                UpdateUserInterface(component);
+                component.TargetList.Add(tag);
+                UpdateUserInterface(uid, component);
                 break;
         }
     }
@@ -112,7 +114,7 @@ public sealed class MailingUnitSystem : EntitySystem
             [NetTarget] = component.Target
         };
 
-        _deviceNetworkSystem.QueuePacket(uid, null, payload, null, device);
+        _deviceNetworkSystem.QueuePacket(uid, null, payload, null, null, device);
     }
 
     /// <summary>
@@ -130,7 +132,7 @@ public sealed class MailingUnitSystem : EntitySystem
         };
 
         component.TargetList.Clear();
-        _deviceNetworkSystem.QueuePacket(uid, null, payload, null, device);
+        _deviceNetworkSystem.QueuePacket(uid, null, payload, null, null, device);
     }
 
     /// <summary>
@@ -146,11 +148,14 @@ public sealed class MailingUnitSystem : EntitySystem
         }
 
         component.Tag = configuration[TagConfigurationKey];
-        UpdateUserInterface(component);
+        UpdateUserInterface(uid, component);
     }
 
     private void HandleActivate(EntityUid uid, MailingUnitComponent component, ActivateInWorldEvent args)
     {
+        if (args.Handled || !args.Complex)
+            return;
+
         if (!EntityManager.TryGetComponent(args.User, out ActorComponent? actor))
         {
             return;
@@ -158,7 +163,7 @@ public sealed class MailingUnitSystem : EntitySystem
 
         args.Handled = true;
         UpdateTargetList(uid, component);
-        _userInterfaceSystem.GetUiOrNull(uid, MailingUnitUiKey.Key)?.Open(actor.PlayerSession);
+        _userInterfaceSystem.OpenUi(uid, MailingUnitUiKey.Key, actor.PlayerSession);
     }
 
     /// <summary>
@@ -167,28 +172,22 @@ public sealed class MailingUnitSystem : EntitySystem
     private void OnDisposalUnitUIStateChange(EntityUid uid, MailingUnitComponent component, DisposalUnitUIStateUpdatedEvent args)
     {
         component.DisposalUnitInterfaceState = args.State;
-        UpdateUserInterface(component);
+        UpdateUserInterface(uid, component);
     }
 
-    private void UpdateUserInterface(MailingUnitComponent component)
+    private void UpdateUserInterface(EntityUid uid, MailingUnitComponent component)
     {
         if (component.DisposalUnitInterfaceState == null)
             return;
 
-        var state = new MailingUnitBoundUserInterfaceState(component.DisposalUnitInterfaceState, component.Target, component.TargetList, component.Tag);
-        component.Owner.GetUIOrNull(MailingUnitUiKey.Key)?.SetState(state);
+        var state = new MailingUnitBoundUserInterfaceState(component.DisposalUnitInterfaceState, component.Target, component.TargetList.ShallowClone(), component.Tag);
+        _userInterfaceSystem.SetUiState(uid, MailingUnitUiKey.Key, state);
     }
 
     private void OnTargetSelected(EntityUid uid, MailingUnitComponent component, TargetSelectedMessage args)
     {
-        if (string.IsNullOrEmpty(args.target))
-        {
-            component.Target = null;
-        }
-
-        component.Target = args.target;
-        UpdateUserInterface(component);
-
+        component.Target = args.Target;
+        UpdateUserInterface(uid, component);
     }
 
     /// <summary>

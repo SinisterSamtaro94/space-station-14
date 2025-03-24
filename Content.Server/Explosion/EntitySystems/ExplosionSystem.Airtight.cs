@@ -3,12 +3,13 @@ using Content.Server.Destructible;
 using Content.Shared.Atmos;
 using Content.Shared.Damage;
 using Content.Shared.Explosion;
+using Content.Shared.Explosion.EntitySystems;
 using Content.Shared.FixedPoint;
-using Robust.Shared.Map;
+using Robust.Shared.Map.Components;
 
 namespace Content.Server.Explosion.EntitySystems;
 
-public sealed partial class ExplosionSystem : EntitySystem
+public sealed partial class ExplosionSystem
 {
     [Dependency] private readonly DestructibleSystem _destructibleSystem = default!;
 
@@ -41,10 +42,10 @@ public sealed partial class ExplosionSystem : EntitySystem
     // indices to this tile-data struct.
     private Dictionary<EntityUid, Dictionary<Vector2i, TileData>> _airtightMap = new();
 
-    public void UpdateAirtightMap(EntityUid gridId, Vector2i tile, EntityQuery<AirtightComponent>? query = null)
+    public void UpdateAirtightMap(EntityUid gridId, Vector2i tile, MapGridComponent? grid = null, EntityQuery<AirtightComponent>? query = null)
     {
-        if (_mapManager.TryGetGrid(gridId, out var grid))
-            UpdateAirtightMap(grid, tile, query);
+        if (Resolve(gridId, ref grid, false))
+            UpdateAirtightMap(gridId, grid, tile, query);
     }
 
     /// <summary>
@@ -57,25 +58,26 @@ public sealed partial class ExplosionSystem : EntitySystem
     ///     something like a normal and a reinforced windoor on the same tile. But given that this is a pretty rare
     ///     occurrence, I am fine with this.
     /// </remarks>
-    public void UpdateAirtightMap(IMapGrid grid, Vector2i tile, EntityQuery<AirtightComponent>? query = null)
+    public void UpdateAirtightMap(EntityUid gridId, MapGridComponent grid, Vector2i tile, EntityQuery<AirtightComponent>? query = null)
     {
         var tolerance = new float[_explosionTypes.Count];
         var blockedDirections = AtmosDirection.Invalid;
 
-        if (!_airtightMap.ContainsKey(grid.GridEntityId))
-            _airtightMap[grid.GridEntityId] = new();
+        if (!_airtightMap.ContainsKey(gridId))
+            _airtightMap[gridId] = new();
 
         query ??= EntityManager.GetEntityQuery<AirtightComponent>();
         var damageQuery = EntityManager.GetEntityQuery<DamageableComponent>();
         var destructibleQuery = EntityManager.GetEntityQuery<DestructibleComponent>();
+        var anchoredEnumerator = grid.GetAnchoredEntitiesEnumerator(tile);
 
-        foreach (var uid in grid.GetAnchoredEntities(tile))
+        while (anchoredEnumerator.MoveNext(out var uid))
         {
             if (!query.Value.TryGetComponent(uid, out var airtight) || !airtight.AirBlocked)
                 continue;
 
             blockedDirections |= airtight.AirBlockedDirection;
-            var entityTolerances = GetExplosionTolerance(uid, damageQuery, destructibleQuery);
+            var entityTolerances = GetExplosionTolerance(uid.Value, damageQuery, destructibleQuery);
             for (var i = 0; i < tolerance.Length; i++)
             {
                 tolerance[i] = Math.Max(tolerance[i], entityTolerances[i]);
@@ -83,9 +85,9 @@ public sealed partial class ExplosionSystem : EntitySystem
         }
 
         if (blockedDirections != AtmosDirection.Invalid)
-            _airtightMap[grid.GridEntityId][tile] = new(tolerance, blockedDirections);
+            _airtightMap[gridId][tile] = new(tolerance, blockedDirections);
         else
-            _airtightMap[grid.GridEntityId].Remove(tile);
+            _airtightMap[gridId].Remove(tile);
     }
 
     /// <summary>
@@ -100,10 +102,10 @@ public sealed partial class ExplosionSystem : EntitySystem
         if (!EntityManager.TryGetComponent(uid, out TransformComponent? transform) || !transform.Anchored)
             return;
 
-        if (!_mapManager.TryGetGrid(transform.GridUid, out var grid))
+        if (!TryComp<MapGridComponent>(transform.GridUid, out var grid))
             return;
 
-        UpdateAirtightMap(grid, grid.CoordinatesToTile(transform.Coordinates));
+        UpdateAirtightMap(transform.GridUid.Value, grid, grid.CoordinatesToTile(transform.Coordinates));
     }
 
     /// <summary>
@@ -150,7 +152,7 @@ public sealed partial class ExplosionSystem : EntitySystem
                     continue;
 
                 var ev = new GetExplosionResistanceEvent(explosionType.ID);
-                RaiseLocalEvent(uid, ev, false);
+                RaiseLocalEvent(uid, ref ev);
 
                 damagePerIntensity += value * Math.Max(0, ev.DamageCoefficient);
             }

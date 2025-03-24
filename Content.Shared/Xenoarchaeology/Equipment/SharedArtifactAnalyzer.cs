@@ -1,4 +1,5 @@
 ﻿using Robust.Shared.Serialization;
+using Robust.Shared.Utility;
 
 namespace Content.Shared.Xenoarchaeology.Equipment;
 
@@ -24,63 +25,45 @@ public sealed class AnalysisConsolePrintButtonPressedMessage : BoundUserInterfac
 }
 
 [Serializable, NetSerializable]
-public sealed class AnalysisConsoleDestroyButtonPressedMessage : BoundUserInterfaceMessage
+public sealed class AnalysisConsoleExtractButtonPressedMessage : BoundUserInterfaceMessage
 {
 }
 
 [Serializable, NetSerializable]
-public sealed class AnalysisConsoleScanUpdateState : BoundUserInterfaceState
+public sealed class AnalysisConsoleBiasButtonPressedMessage(bool isDown) : BoundUserInterfaceMessage
 {
-    public EntityUid? Artifact;
+    public bool IsDown = isDown;
+}
 
-    public bool AnalyzerConnected;
-
-    public bool ServerConnected;
-
-    public bool CanScan;
-
-    public bool CanPrint;
-
-    public int? Id;
-
-    public int? Depth;
-
-    public int? Edges;
-
-    public bool? Triggered;
-
-    public string? EffectProto;
-
-    public string? TriggerProto;
-
-    public int? PointValue;
-
-    public bool Scanning;
-
-    public TimeSpan TimeRemaining;
-
-    public TimeSpan TotalTime;
-
-    public AnalysisConsoleScanUpdateState(EntityUid? artifact, bool analyzerConnected, bool serverConnected, bool canScan, bool canPrint,
-        int? id, int? depth, int? edges, bool? triggered, string? effectProto, string? triggerProto, int? pointValue,
-        bool scanning, TimeSpan timeRemaining, TimeSpan totalTime)
-    {
-        Artifact = artifact;
-        AnalyzerConnected = analyzerConnected;
-        ServerConnected = serverConnected;
-        CanScan = canScan;
-        CanPrint = canPrint;
-
-        Id = id;
-        Depth = depth;
-        Edges = edges;
-        Triggered = triggered;
-        EffectProto = effectProto;
-        TriggerProto = triggerProto;
-        PointValue = pointValue;
-
-        Scanning = scanning;
-        TimeRemaining = timeRemaining;
-        TotalTime = totalTime;
-    }
+[Serializable, NetSerializable]
+public sealed class AnalysisConsoleUpdateState(
+    NetEntity? artifact,
+    bool analyzerConnected,
+    bool serverConnected,
+    bool canScan,
+    bool canPrint,
+    FormattedMessage? scanReport,
+    bool scanning,
+    bool paused,
+    TimeSpan? startTime,
+    TimeSpan? accumulatedRunTime,
+    TimeSpan? totalTime,
+    int pointAmount,
+    bool isTraversalDown
+)
+    : BoundUserInterfaceState
+{
+    public NetEntity? Artifact = artifact;
+    public bool AnalyzerConnected = analyzerConnected;
+    public bool ServerConnected = serverConnected;
+    public bool CanScan = canScan;
+    public bool CanPrint = canPrint;
+    public FormattedMessage? ScanReport = scanReport;
+    public bool Scanning = scanning;
+    public bool Paused = paused;
+    public TimeSpan? StartTime = startTime;
+    public TimeSpan? AccumulatedRunTime = accumulatedRunTime;
+    public TimeSpan? TotalTime = totalTime;
+    public int PointAmount = pointAmount;
+    public bool IsTraversalDown = isTraversalDown;
 }

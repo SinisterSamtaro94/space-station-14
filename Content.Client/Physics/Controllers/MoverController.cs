@@ -1,146 +1,154 @@
+using Content.Shared.Alert;
+using Content.Shared.CCVar;
 using Content.Shared.Movement.Components;
+using Content.Shared.Movement.Pulling.Components;
 using Content.Shared.Movement.Systems;
-using Content.Shared.Pulling.Components;
 using Robust.Client.GameObjects;
+using Robust.Client.Physics;
 using Robust.Client.Player;
-using Robust.Shared.Physics;
+using Robust.Shared.Configuration;
 using Robust.Shared.Physics.Components;
+using Robust.Shared.Player;
 using Robust.Shared.Timing;
 
-namespace Content.Client.Physics.Controllers
+namespace Content.Client.Physics.Controllers;
+
+public sealed class MoverController : SharedMoverController
 {
-    public sealed class MoverController : SharedMoverController
+    [Dependency] private readonly IGameTiming _timing = default!;
+    [Dependency] private readonly IPlayerManager _playerManager = default!;
+    [Dependency] private readonly AlertsSystem _alerts = default!;
+    [Dependency] private readonly IConfigurationManager _cfg = default!;
+
+    public override void Initialize()
     {
-        [Dependency] private readonly IGameTiming _timing = default!;
-        [Dependency] private readonly IPlayerManager _playerManager = default!;
+        base.Initialize();
+        SubscribeLocalEvent<RelayInputMoverComponent, LocalPlayerAttachedEvent>(OnRelayPlayerAttached);
+        SubscribeLocalEvent<RelayInputMoverComponent, LocalPlayerDetachedEvent>(OnRelayPlayerDetached);
+        SubscribeLocalEvent<InputMoverComponent, LocalPlayerAttachedEvent>(OnPlayerAttached);
+        SubscribeLocalEvent<InputMoverComponent, LocalPlayerDetachedEvent>(OnPlayerDetached);
 
-        public override void Initialize()
+        SubscribeLocalEvent<InputMoverComponent, UpdateIsPredictedEvent>(OnUpdatePredicted);
+        SubscribeLocalEvent<MovementRelayTargetComponent, UpdateIsPredictedEvent>(OnUpdateRelayTargetPredicted);
+        SubscribeLocalEvent<PullableComponent, UpdateIsPredictedEvent>(OnUpdatePullablePredicted);
+    }
+
+    private void OnUpdatePredicted(Entity<InputMoverComponent> entity, ref UpdateIsPredictedEvent args)
+    {
+        // Enable prediction if an entity is controlled by the player
+        if (entity.Owner == _playerManager.LocalEntity)
+            args.IsPredicted = true;
+    }
+
+    private void OnUpdateRelayTargetPredicted(Entity<MovementRelayTargetComponent> entity, ref UpdateIsPredictedEvent args)
+    {
+        if (entity.Comp.Source == _playerManager.LocalEntity)
+            args.IsPredicted = true;
+    }
+
+    private void OnUpdatePullablePredicted(Entity<PullableComponent> entity, ref UpdateIsPredictedEvent args)
+    {
+        // Enable prediction if an entity is being pulled by the player.
+        // Disable prediction if an entity is being pulled by some non-player entity.
+
+        if (entity.Comp.Puller == _playerManager.LocalEntity)
+            args.IsPredicted = true;
+        else if (entity.Comp.Puller != null)
+            args.BlockPrediction = true;
+
+        // TODO recursive pulling checks?
+        // What if the entity is being pulled by a vehicle controlled by the player?
+    }
+
+    private void OnRelayPlayerAttached(Entity<RelayInputMoverComponent> entity, ref LocalPlayerAttachedEvent args)
+    {
+        Physics.UpdateIsPredicted(entity.Owner);
+        Physics.UpdateIsPredicted(entity.Comp.RelayEntity);
+        if (MoverQuery.TryGetComponent(entity.Comp.RelayEntity, out var inputMover))
+            SetMoveInput((entity.Comp.RelayEntity, inputMover), MoveButtons.None);
+    }
+
+    private void OnRelayPlayerDetached(Entity<RelayInputMoverComponent> entity, ref LocalPlayerDetachedEvent args)
+    {
+        Physics.UpdateIsPredicted(entity.Owner);
+        Physics.UpdateIsPredicted(entity.Comp.RelayEntity);
+        if (MoverQuery.TryGetComponent(entity.Comp.RelayEntity, out var inputMover))
+            SetMoveInput((entity.Comp.RelayEntity, inputMover), MoveButtons.None);
+    }
+
+    private void OnPlayerAttached(Entity<InputMoverComponent> entity, ref LocalPlayerAttachedEvent args)
+    {
+        SetMoveInput(entity, MoveButtons.None);
+    }
+
+    private void OnPlayerDetached(Entity<InputMoverComponent> entity, ref LocalPlayerDetachedEvent args)
+    {
+        SetMoveInput(entity, MoveButtons.None);
+    }
+
+    public override void UpdateBeforeSolve(bool prediction, float frameTime)
+    {
+        base.UpdateBeforeSolve(prediction, frameTime);
+
+        if (_playerManager.LocalEntity is not {Valid: true} player)
+            return;
+
+        if (RelayQuery.TryGetComponent(player, out var relayMover))
+            HandleClientsideMovement(relayMover.RelayEntity, frameTime);
+
+        HandleClientsideMovement(player, frameTime);
+    }
+
+    private void HandleClientsideMovement(EntityUid player, float frameTime)
+    {
+        if (!MoverQuery.TryGetComponent(player, out var mover) ||
+            !XformQuery.TryGetComponent(player, out var xform))
         {
-            base.Initialize();
-            SubscribeLocalEvent<RelayInputMoverComponent, PlayerAttachedEvent>(OnRelayPlayerAttached);
-            SubscribeLocalEvent<RelayInputMoverComponent, PlayerDetachedEvent>(OnRelayPlayerDetached);
-            SubscribeLocalEvent<InputMoverComponent, PlayerAttachedEvent>(OnPlayerAttached);
-            SubscribeLocalEvent<InputMoverComponent, PlayerDetachedEvent>(OnPlayerDetached);
+            return;
         }
 
-        private void OnRelayPlayerAttached(EntityUid uid, RelayInputMoverComponent component, PlayerAttachedEvent args)
-        {
-            if (TryComp<InputMoverComponent>(component.RelayEntity, out var inputMover))
-                SetMoveInput(inputMover, MoveButtons.None);
-        }
+        var physicsUid = player;
+        PhysicsComponent? body;
+        var xformMover = xform;
 
-        private void OnRelayPlayerDetached(EntityUid uid, RelayInputMoverComponent component, PlayerDetachedEvent args)
+        if (mover.ToParent && RelayQuery.HasComponent(xform.ParentUid))
         {
-            if (TryComp<InputMoverComponent>(component.RelayEntity, out var inputMover))
-                SetMoveInput(inputMover, MoveButtons.None);
-        }
-
-        private void OnPlayerAttached(EntityUid uid, InputMoverComponent component, PlayerAttachedEvent args)
-        {
-            SetMoveInput(component, MoveButtons.None);
-        }
-
-        private void OnPlayerDetached(EntityUid uid, InputMoverComponent component, PlayerDetachedEvent args)
-        {
-            SetMoveInput(component, MoveButtons.None);
-        }
-
-        public override void UpdateBeforeSolve(bool prediction, float frameTime)
-        {
-            base.UpdateBeforeSolve(prediction, frameTime);
-
-            if (_playerManager.LocalPlayer?.ControlledEntity is not {Valid: true} player)
+            if (!PhysicsQuery.TryGetComponent(xform.ParentUid, out body) ||
+                !XformQuery.TryGetComponent(xform.ParentUid, out xformMover))
+            {
                 return;
-
-            if (TryComp<RelayInputMoverComponent>(player, out var relayMover))
-            {
-                if (relayMover.RelayEntity != null)
-                {
-                    if (TryComp<InputMoverComponent>(player, out var mover) &&
-                        TryComp<InputMoverComponent>(relayMover.RelayEntity, out var relayed))
-                    {
-                        relayed.CanMove = mover.CanMove;
-                        relayed.RelativeEntity = mover.RelativeEntity;
-                        relayed.RelativeRotation = mover.RelativeRotation;
-                        relayed.TargetRelativeRotation = mover.RelativeRotation;
-                    }
-
-                    HandleClientsideMovement(relayMover.RelayEntity.Value, frameTime);
-                }
             }
 
-            HandleClientsideMovement(player, frameTime);
+            physicsUid = xform.ParentUid;
         }
-
-        private void HandleClientsideMovement(EntityUid player, float frameTime)
+        else if (!PhysicsQuery.TryGetComponent(player, out body))
         {
-            var xformQuery = GetEntityQuery<TransformComponent>();
-
-            if (!TryComp(player, out InputMoverComponent? mover) ||
-                !xformQuery.TryGetComponent(player, out var xform))
-            {
-                return;
-            }
-
-            PhysicsComponent? body = null;
-            TransformComponent? xformMover = xform;
-
-            if (mover.ToParent && HasComp<RelayInputMoverComponent>(xform.ParentUid))
-            {
-                if (!TryComp(xform.ParentUid, out body) ||
-                    !TryComp(xform.ParentUid, out xformMover))
-                {
-                    return;
-                }
-            }
-            else if (!TryComp(player, out body))
-            {
-                return;
-            }
-
-            // Essentially we only want to set our mob to predicted so every other entity we just interpolate
-            // (i.e. only see what the server has sent us).
-            // The exception to this is joints.
-            body.Predict = true;
-
-            // We set joints to predicted given these can affect how our mob moves.
-            // I would only recommend disabling this if you make pulling not use joints anymore (someday maybe?)
-
-            if (TryComp(player, out JointComponent? jointComponent))
-            {
-                foreach (var joint in jointComponent.GetJoints.Values)
-                {
-                    if (TryComp(joint.BodyAUid, out PhysicsComponent? physics))
-                        physics.Predict = true;
-
-                    if (TryComp(joint.BodyBUid, out physics))
-                        physics.Predict = true;
-                }
-            }
-
-            // If we're being pulled then we won't predict anything and will receive server lerps so it looks way smoother.
-            if (TryComp(player, out SharedPullableComponent? pullableComp))
-            {
-                if (pullableComp.Puller is {Valid: true} puller && TryComp<PhysicsComponent?>(puller, out var pullerBody))
-                {
-                    pullerBody.Predict = false;
-                    body.Predict = false;
-
-                    if (TryComp<SharedPullerComponent>(player, out var playerPuller) && playerPuller.Pulling != null &&
-                        TryComp<PhysicsComponent>(playerPuller.Pulling, out var pulledBody))
-                    {
-                        pulledBody.Predict = false;
-                    }
-                }
-            }
-
-            // Server-side should just be handled on its own so we'll just do this shizznit
-            HandleMobMovement(mover, body, xformMover, frameTime, xformQuery);
+            return;
         }
 
-        protected override bool CanSound()
-        {
-            return _timing.IsFirstTimePredicted && _timing.InSimulation;
-        }
+        // Server-side should just be handled on its own so we'll just do this shizznit
+        HandleMobMovement(
+            player,
+            mover,
+            physicsUid,
+            body,
+            xformMover,
+            frameTime);
+    }
+
+    protected override bool CanSound()
+    {
+        return _timing is { IsFirstTimePredicted: true, InSimulation: true };
+    }
+
+    public override void SetSprinting(Entity<InputMoverComponent> entity, ushort subTick, bool walking)
+    {
+        // Logger.Info($"[{_gameTiming.CurTick}/{subTick}] Sprint: {enabled}");
+        base.SetSprinting(entity, subTick, walking);
+
+        if (walking && _cfg.GetCVar(CCVars.ToggleWalk))
+            _alerts.ShowAlert(entity, WalkingAlert, showCooldown: false, autoRemove: false);
+        else
+            _alerts.ClearAlert(entity, WalkingAlert);
     }
 }

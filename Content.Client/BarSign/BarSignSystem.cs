@@ -1,7 +1,7 @@
+using Content.Client.BarSign.Ui;
 using Content.Shared.BarSign;
 using Content.Shared.Power;
 using Robust.Client.GameObjects;
-using Robust.Shared.GameStates;
 using Robust.Shared.Prototypes;
 
 namespace Content.Client.BarSign;
@@ -9,39 +9,39 @@ namespace Content.Client.BarSign;
 public sealed class BarSignSystem : VisualizerSystem<BarSignComponent>
 {
     [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
+    [Dependency] private readonly UserInterfaceSystem _ui = default!;
 
     public override void Initialize()
     {
         base.Initialize();
-        SubscribeLocalEvent<BarSignComponent, ComponentHandleState>(OnHandleState);
+        SubscribeLocalEvent<BarSignComponent, AfterAutoHandleStateEvent>(OnAfterAutoHandleState);
     }
 
-    private void OnHandleState(EntityUid uid, BarSignComponent component, ref ComponentHandleState args)
+    private void OnAfterAutoHandleState(EntityUid uid, BarSignComponent component, ref AfterAutoHandleStateEvent args)
     {
-        if (args.Current is not BarSignComponentState state)
-            return;
+        if (_ui.TryGetOpenUi<BarSignBoundUserInterface>(uid, BarSignUiKey.Key, out var bui))
+            bui.Update(component.Current);
 
-        component.CurrentSign = state.CurrentSign;
-        UpdateAppearance(component);
+        UpdateAppearance(uid, component);
     }
 
     protected override void OnAppearanceChange(EntityUid uid, BarSignComponent component, ref AppearanceChangeEvent args)
     {
-        UpdateAppearance(component, args.Component, args.Sprite);
+        UpdateAppearance(uid, component, args.Component, args.Sprite);
     }
 
-    private void UpdateAppearance(BarSignComponent sign, AppearanceComponent? appearance = null, SpriteComponent? sprite = null)
+    private void UpdateAppearance(EntityUid id, BarSignComponent sign, AppearanceComponent? appearance = null, SpriteComponent? sprite = null)
     {
-        if (!Resolve(sign.Owner, ref appearance, ref sprite))
+        if (!Resolve(id, ref appearance, ref sprite))
             return;
 
-        appearance.TryGetData(PowerDeviceVisuals.Powered, out bool powered);
+        AppearanceSystem.TryGetData<bool>(id, PowerDeviceVisuals.Powered, out var powered, appearance);
 
         if (powered
-            && sign.CurrentSign != null
-            && _prototypeManager.TryIndex(sign.CurrentSign, out BarSignPrototype? proto))
+            && sign.Current != null
+            && _prototypeManager.TryIndex(sign.Current, out var proto))
         {
-            sprite.LayerSetState(0, proto.Icon);
+            sprite.LayerSetSprite(0, proto.Icon);
             sprite.LayerSetShader(0, "unshaded");
         }
         else

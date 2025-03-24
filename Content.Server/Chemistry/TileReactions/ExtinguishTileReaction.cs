@@ -10,16 +10,20 @@ namespace Content.Server.Chemistry.TileReactions
 {
     [UsedImplicitly]
     [DataDefinition]
-    public sealed class ExtinguishTileReaction : ITileReaction
+    public sealed partial class ExtinguishTileReaction : ITileReaction
     {
         [DataField("coolingTemperature")] private float _coolingTemperature = 2f;
 
-        public FixedPoint2 TileReact(TileRef tile, ReagentPrototype reagent, FixedPoint2 reactVolume)
+        public FixedPoint2 TileReact(TileRef tile,
+            ReagentPrototype reagent,
+            FixedPoint2 reactVolume,
+            IEntityManager entityManager,
+            List<ReagentData>? data)
         {
             if (reactVolume <= FixedPoint2.Zero || tile.Tile.IsEmpty)
                 return FixedPoint2.Zero;
 
-            var atmosphereSystem = EntitySystem.Get<AtmosphereSystem>();
+            var atmosphereSystem = entityManager.System<AtmosphereSystem>();
 
             var environment = atmosphereSystem.GetTileMixture(tile.GridUid, null, tile.GridIndices, true);
 

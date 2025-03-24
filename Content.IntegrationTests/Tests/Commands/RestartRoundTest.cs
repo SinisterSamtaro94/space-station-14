@@ -1,11 +1,9 @@
-using System;
-using System.Threading.Tasks;
 using Content.Server.GameTicking;
 using Content.Server.GameTicking.Commands;
 using Content.Shared.CCVar;
-using NUnit.Framework;
 using Robust.Shared.Configuration;
 using Robust.Shared.GameObjects;
+using Robust.Shared.IoC;
 using Robust.Shared.Timing;
 
 namespace Content.IntegrationTests.Tests.Commands
@@ -19,28 +17,31 @@ namespace Content.IntegrationTests.Tests.Commands
         [TestCase(false)]
         public async Task RestartRoundAfterStart(bool lobbyEnabled)
         {
-            await using var pairTracker = await PoolManager.GetServerClient(new PoolSettings(){Dirty = true});
-            var server = pairTracker.Pair.Server;
+            await using var pair = await PoolManager.GetServerClient(new PoolSettings
+            {
+                DummyTicker = false,
+                Dirty = true
+            });
+            var server = pair.Server;
 
             var configManager = server.ResolveDependency<IConfigurationManager>();
             var entityManager = server.ResolveDependency<IEntityManager>();
-            var gameTicker = entityManager.EntitySysManager.GetEntitySystem<GameTicker>();
+            var gameTicker = entityManager.System<GameTicker>();
 
-            await PoolManager.RunTicksSync(pairTracker.Pair, 5);
+            await pair.RunTicksSync(5);
 
             GameTick tickBeforeRestart = default;
 
             await server.WaitAssertion(() =>
             {
-                Assert.That(configManager.GetCVar<bool>(CCVars.GameLobbyEnabled), Is.EqualTo(false));
+                Assert.That(configManager.GetCVar(CCVars.GameLobbyEnabled), Is.EqualTo(false));
                 configManager.SetCVar(CCVars.GameLobbyEnabled, lobbyEnabled);
 
                 Assert.That(gameTicker.RunLevel, Is.EqualTo(GameRunLevel.InRound));
 
                 tickBeforeRestart = entityManager.CurrentTick;
 
-                var command = new RestartRoundNowCommand();
-                command.Execute(null, string.Empty, Array.Empty<string>());
+                gameTicker.RestartRound();
 
                 if (lobbyEnabled)
                 {
@@ -48,17 +49,17 @@ namespace Content.IntegrationTests.Tests.Commands
                 }
             });
 
-            await PoolManager.RunTicksSync(pairTracker.Pair, 15);
+            await pair.RunTicksSync(15);
 
             await server.WaitAssertion(() =>
             {
                 var tickAfterRestart = entityManager.CurrentTick;
 
-                Assert.That(tickBeforeRestart < tickAfterRestart);
+                Assert.That(tickBeforeRestart, Is.LessThan(tickAfterRestart));
             });
 
-            await PoolManager.RunTicksSync(pairTracker.Pair, 5);
-            await pairTracker.CleanReturnAsync();
+            await pair.RunTicksSync(5);
+            await pair.CleanReturnAsync();
         }
     }
 }

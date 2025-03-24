@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Threading;
 using Content.Server.Administration.Commands;
 using Content.Server.Administration.Components;
@@ -6,14 +5,9 @@ using Content.Server.Atmos.Components;
 using Content.Server.Atmos.EntitySystems;
 using Content.Server.Body.Components;
 using Content.Server.Body.Systems;
-using Content.Server.Clothing.Components;
-using Content.Server.Damage.Systems;
-using Content.Server.Disease;
-using Content.Server.Disease.Components;
 using Content.Server.Electrocution;
 using Content.Server.Explosion.EntitySystems;
 using Content.Server.GhostKick;
-using Content.Server.Interaction.Components;
 using Content.Server.Medical;
 using Content.Server.Nutrition.EntitySystems;
 using Content.Server.Pointing.Components;
@@ -24,29 +18,35 @@ using Content.Server.Storage.Components;
 using Content.Server.Storage.EntitySystems;
 using Content.Server.Tabletop;
 using Content.Server.Tabletop.Components;
-using Content.Server.Tools.Systems;
 using Content.Shared.Administration;
+using Content.Shared.Administration.Components;
 using Content.Shared.Body.Components;
 using Content.Shared.Body.Part;
+using Content.Shared.Clumsy;
 using Content.Shared.Clothing.Components;
+using Content.Shared.Cluwne;
 using Content.Shared.Damage;
+using Content.Shared.Damage.Systems;
 using Content.Shared.Database;
-using Content.Shared.Disease;
 using Content.Shared.Electrocution;
 using Content.Shared.Interaction.Components;
 using Content.Shared.Inventory;
-using Content.Shared.MobState;
-using Content.Shared.MobState.Components;
+using Content.Shared.Mobs;
+using Content.Shared.Mobs.Components;
+using Content.Shared.Mobs.Systems;
 using Content.Shared.Movement.Components;
 using Content.Shared.Movement.Systems;
 using Content.Shared.Nutrition.Components;
 using Content.Shared.Popups;
+using Content.Shared.Slippery;
 using Content.Shared.Tabletop.Components;
+using Content.Shared.Tools.Systems;
 using Content.Shared.Verbs;
-using Robust.Server.GameObjects;
 using Robust.Shared.Map;
+using Robust.Shared.Map.Components;
 using Robust.Shared.Physics;
 using Robust.Shared.Physics.Components;
+using Robust.Shared.Physics.Systems;
 using Robust.Shared.Player;
 using Robust.Shared.Random;
 using Robust.Shared.Utility;
@@ -60,25 +60,31 @@ public sealed partial class AdminVerbSystem
     [Dependency] private readonly BloodstreamSystem _bloodstreamSystem = default!;
     [Dependency] private readonly BodySystem _bodySystem = default!;
     [Dependency] private readonly CreamPieSystem _creamPieSystem = default!;
-    [Dependency] private readonly DiseaseSystem _diseaseSystem = default!;
     [Dependency] private readonly ElectrocutionSystem _electrocutionSystem = default!;
     [Dependency] private readonly EntityStorageSystem _entityStorageSystem = default!;
     [Dependency] private readonly ExplosionSystem _explosionSystem = default!;
+    [Dependency] private readonly FixtureSystem _fixtures = default!;
     [Dependency] private readonly FlammableSystem _flammableSystem = default!;
     [Dependency] private readonly GhostKickManager _ghostKickManager = default!;
-    [Dependency] private readonly GodmodeSystem _godmodeSystem = default!;
+    [Dependency] private readonly SharedGodmodeSystem _sharedGodmodeSystem = default!;
     [Dependency] private readonly InventorySystem _inventorySystem = default!;
-    [Dependency] private readonly PolymorphableSystem _polymorphableSystem = default!;
+    [Dependency] private readonly MovementSpeedModifierSystem _movementSpeedModifierSystem = default!;
+    [Dependency] private readonly PolymorphSystem _polymorphSystem = default!;
+    [Dependency] private readonly MobThresholdSystem _mobThresholdSystem = default!;
     [Dependency] private readonly PopupSystem _popupSystem = default!;
+    [Dependency] private readonly SharedPhysicsSystem _physics = default!;
     [Dependency] private readonly TabletopSystem _tabletopSystem = default!;
     [Dependency] private readonly VomitSystem _vomitSystem = default!;
     [Dependency] private readonly WeldableSystem _weldableSystem = default!;
-    [Dependency] private readonly MovementSpeedModifierSystem _movementSpeedModifierSystem = default!;
+    [Dependency] private readonly SharedContentEyeSystem _eyeSystem = default!;
+    [Dependency] private readonly SharedTransformSystem _transformSystem = default!;
+    [Dependency] private readonly SuperBonkSystem _superBonkSystem = default!;
+    [Dependency] private readonly SlipperySystem _slipperySystem = default!;
 
     // All smite verbs have names so invokeverb works.
     private void AddSmiteVerbs(GetVerbsEvent<Verb> args)
     {
-        if (!EntityManager.TryGetComponent<ActorComponent?>(args.User, out var actor))
+        if (!EntityManager.TryGetComponent(args.User, out ActorComponent? actor))
             return;
 
         var player = actor.PlayerSession;
@@ -90,146 +96,131 @@ public sealed partial class AdminVerbSystem
         if (HasComp<MapComponent>(args.Target) || HasComp<MapGridComponent>(args.Target))
             return;
 
+        var explodeName = Loc.GetString("admin-smite-explode-name").ToLowerInvariant();
         Verb explode = new()
         {
-            Text = "Explode",
+            Text = explodeName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Interface/VerbIcons/smite.svg.192dpi.png",
+            Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/VerbIcons/smite.svg.192dpi.png")),
             Act = () =>
             {
-                var coords = Transform(args.Target).MapPosition;
+                var coords = _transformSystem.GetMapCoordinates(args.Target);
                 Timer.Spawn(_gameTiming.TickPeriod,
                     () => _explosionSystem.QueueExplosion(coords, ExplosionSystem.DefaultExplosionPrototypeId,
-                        4, 1, 2, maxTileBreak: 0), // it gibs, damage doesn't need to be high.
+                        4, 1, 2, args.Target, maxTileBreak: 0), // it gibs, damage doesn't need to be high.
                     CancellationToken.None);
 
                 _bodySystem.GibBody(args.Target);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-explode-description")
+            Message = string.Join(": ", explodeName, Loc.GetString("admin-smite-explode-description")) // we do this so the description tells admins the Text to run it via console.
         };
         args.Verbs.Add(explode);
 
+        var chessName = Loc.GetString("admin-smite-chess-dimension-name").ToLowerInvariant();
         Verb chess = new()
         {
-            Text = "Chess Dimension",
+            Text = chessName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Objects/Fun/Tabletop/chessboard.rsi/chessboard.png",
+            Icon = new SpriteSpecifier.Rsi(new ("/Textures/Objects/Fun/Tabletop/chessboard.rsi"), "chessboard"),
             Act = () =>
             {
-                _godmodeSystem.EnableGodmode(args.Target); // So they don't suffocate.
+                _sharedGodmodeSystem.EnableGodmode(args.Target); // So they don't suffocate.
                 EnsureComp<TabletopDraggableComponent>(args.Target);
                 RemComp<PhysicsComponent>(args.Target); // So they can be dragged around.
                 var xform = Transform(args.Target);
                 _popupSystem.PopupEntity(Loc.GetString("admin-smite-chess-self"), args.Target,
-                    Filter.Entities(args.Target), PopupType.LargeCaution);
+                    args.Target, PopupType.LargeCaution);
                 _popupSystem.PopupCoordinates(
                     Loc.GetString("admin-smite-chess-others", ("name", args.Target)), xform.Coordinates,
-                    Filter.PvsExcept(args.Target), PopupType.MediumCaution);
+                    Filter.PvsExcept(args.Target), true, PopupType.MediumCaution);
                 var board = Spawn("ChessBoard", xform.Coordinates);
                 var session = _tabletopSystem.EnsureSession(Comp<TabletopGameComponent>(board));
-                xform.Coordinates = EntityCoordinates.FromMap(_mapManager, session.Position);
-                xform.WorldRotation = Angle.Zero;
+                xform.Coordinates = _transformSystem.ToCoordinates(session.Position);
+                _transformSystem.SetWorldRotationNoLerp((args.Target, xform), Angle.Zero);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-chess-dimension-description")
+            Message = string.Join(": ", chessName, Loc.GetString("admin-smite-chess-dimension-description"))
         };
         args.Verbs.Add(chess);
 
         if (TryComp<FlammableComponent>(args.Target, out var flammable))
         {
+            var flamesName = Loc.GetString("admin-smite-set-alight-name").ToLowerInvariant();
             Verb flames = new()
             {
-                Text = "Set Alight",
+                Text = flamesName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Interface/Alerts/Fire/fire.png",
+                Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/Alerts/Fire/fire.png")),
                 Act = () =>
                 {
                     // Fuck you. Burn Forever.
-                    flammable.FireStacks = 99999.9f;
-                    _flammableSystem.Ignite(args.Target);
+                    flammable.FireStacks = flammable.MaximumFireStacks;
+                    _flammableSystem.Ignite(args.Target, args.User);
                     var xform = Transform(args.Target);
                     _popupSystem.PopupEntity(Loc.GetString("admin-smite-set-alight-self"), args.Target,
-                        Filter.Entities(args.Target), PopupType.LargeCaution);
+                        args.Target, PopupType.LargeCaution);
                     _popupSystem.PopupCoordinates(Loc.GetString("admin-smite-set-alight-others", ("name", args.Target)), xform.Coordinates,
-                        Filter.PvsExcept(args.Target), PopupType.MediumCaution);
+                        Filter.PvsExcept(args.Target), true, PopupType.MediumCaution);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-set-alight-description")
+                Message = string.Join(": ", flamesName, Loc.GetString("admin-smite-set-alight-description"))
             };
             args.Verbs.Add(flames);
         }
 
+        var monkeyName = Loc.GetString("admin-smite-monkeyify-name").ToLowerInvariant();
         Verb monkey = new()
         {
-            Text = "Monkeyify",
+            Text = monkeyName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Mobs/Animals/monkey.rsi/dead.png",
+            Icon = new SpriteSpecifier.Rsi(new ("/Textures/Mobs/Animals/monkey.rsi"), "monkey"),
             Act = () =>
             {
-                _polymorphableSystem.PolymorphEntity(args.Target, "AdminMonkeySmite");
+                _polymorphSystem.PolymorphEntity(args.Target, "AdminMonkeySmite");
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-monkeyify-description")
+            Message = string.Join(": ", monkeyName, Loc.GetString("admin-smite-monkeyify-description"))
         };
         args.Verbs.Add(monkey);
 
+        var disposalBinName = Loc.GetString("admin-smite-garbage-can-name").ToLowerInvariant();
         Verb disposalBin = new()
         {
-            Text = "Garbage Can",
+            Text = disposalBinName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Structures/Piping/disposal.rsi/disposal.png",
+            Icon = new SpriteSpecifier.Rsi(new ("/Textures/Structures/Piping/disposal.rsi"), "disposal"),
             Act = () =>
             {
-                _polymorphableSystem.PolymorphEntity(args.Target, "AdminDisposalsSmite");
+                _polymorphSystem.PolymorphEntity(args.Target, "AdminDisposalsSmite");
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-garbage-can-description")
+            Message = string.Join(": ", disposalBinName, Loc.GetString("admin-smite-garbage-can-description"))
         };
         args.Verbs.Add(disposalBin);
 
-        if (TryComp<DiseaseCarrierComponent>(args.Target, out var carrier))
-        {
-            Verb lungCancer = new()
-            {
-                Text = "Lung Cancer",
-                Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Mobs/Species/Human/organs.rsi/lung-l.png",
-                Act = () =>
-                {
-                    _diseaseSystem.TryInfect(carrier, _prototypeManager.Index<DiseasePrototype>("StageIIIALungCancer"),
-                        1.0f, true);
-                },
-                Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-lung-cancer-description")
-            };
-            args.Verbs.Add(lungCancer);
-        }
-
         if (TryComp<DamageableComponent>(args.Target, out var damageable) &&
-            TryComp<MobStateComponent>(args.Target, out var mobState))
+            HasComp<MobStateComponent>(args.Target))
         {
+            var hardElectrocuteName = Loc.GetString("admin-smite-electrocute-name").ToLowerInvariant();
             Verb hardElectrocute = new()
             {
-                Text = "Electrocute",
+                Text = hardElectrocuteName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Clothing/Hands/Gloves/Color/yellow.rsi/icon.png",
+                Icon = new SpriteSpecifier.Rsi(new ("/Textures/Clothing/Hands/Gloves/Color/yellow.rsi"), "icon"),
                 Act = () =>
                 {
                     int damageToDeal;
-                    var critState = mobState._highestToLowestStates.Where(x => x.Value == DamageState.Critical).FirstOrNull();
-                    if (critState is null)
-                    {
+                    if (!_mobThresholdSystem.TryGetThresholdForState(args.Target, MobState.Critical, out var criticalThreshold)) {
                         // We can't crit them so try killing them.
-                        var deadState = mobState._highestToLowestStates.Where(x => x.Value == DamageState.Dead).FirstOrNull();
-                        if (deadState is null)
-                            return; // whelp.
-
-                        damageToDeal = deadState.Value.Key - (int) damageable.TotalDamage;
+                        if (!_mobThresholdSystem.TryGetThresholdForState(args.Target, MobState.Dead,
+                                out var deadThreshold))
+                            return;// whelp.
+                        damageToDeal = deadThreshold.Value.Int() - (int) damageable.TotalDamage;
                     }
                     else
                     {
-                        damageToDeal = critState.Value.Key - (int) damageable.TotalDamage;
+                        damageToDeal = criticalThreshold.Value.Int() - (int) damageable.TotalDamage;
                     }
 
                     if (damageToDeal <= 0)
@@ -250,46 +241,48 @@ public sealed partial class AdminVerbSystem
                         TimeSpan.FromSeconds(30), refresh: true, ignoreInsulation: true);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-electrocute-description")
+                Message = string.Join(": ", hardElectrocuteName, Loc.GetString("admin-smite-electrocute-description"))
             };
             args.Verbs.Add(hardElectrocute);
         }
 
         if (TryComp<CreamPiedComponent>(args.Target, out var creamPied))
         {
+            var creamPieName = Loc.GetString("admin-smite-creampie-name").ToLowerInvariant();
             Verb creamPie = new()
             {
-                Text = "Creampie",
+                Text = creamPieName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Objects/Consumable/Food/Baked/pie.rsi/plain-slice.png",
+                Icon = new SpriteSpecifier.Rsi(new ("/Textures/Objects/Consumable/Food/Baked/pie.rsi"), "plain-slice"),
                 Act = () =>
                 {
                     _creamPieSystem.SetCreamPied(args.Target, creamPied, true);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-creampie-description")
+                Message = string.Join(": ", creamPieName, Loc.GetString("admin-smite-creampie-description"))
             };
             args.Verbs.Add(creamPie);
         }
 
         if (TryComp<BloodstreamComponent>(args.Target, out var bloodstream))
         {
+            var bloodRemovalName = Loc.GetString("admin-smite-remove-blood-name").ToLowerInvariant();
             Verb bloodRemoval = new()
             {
-                Text = "Remove blood",
+                Text = bloodRemovalName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Fluids/tomato_splat.rsi/puddle-1.png",
+                Icon = new SpriteSpecifier.Rsi(new ("/Textures/Fluids/tomato_splat.rsi"), "puddle-1"),
                 Act = () =>
                 {
                     _bloodstreamSystem.SpillAllSolutions(args.Target, bloodstream);
                     var xform = Transform(args.Target);
                     _popupSystem.PopupEntity(Loc.GetString("admin-smite-remove-blood-self"), args.Target,
-                        Filter.Entities(args.Target), PopupType.LargeCaution);
+                        args.Target, PopupType.LargeCaution);
                     _popupSystem.PopupCoordinates(Loc.GetString("admin-smite-remove-blood-others", ("name", args.Target)), xform.Coordinates,
-                        Filter.PvsExcept(args.Target), PopupType.MediumCaution);
+                        Filter.PvsExcept(args.Target), true, PopupType.MediumCaution);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-remove-blood-description")
+                Message = string.Join(": ", bloodRemovalName, Loc.GetString("admin-smite-remove-blood-description"))
             };
             args.Verbs.Add(bloodRemoval);
         }
@@ -297,233 +290,251 @@ public sealed partial class AdminVerbSystem
         // bobby...
         if (TryComp<BodyComponent>(args.Target, out var body))
         {
+            var vomitOrgansName = Loc.GetString("admin-smite-vomit-organs-name").ToLowerInvariant();
             Verb vomitOrgans = new()
             {
-                Text = "Vomit organs",
+                Text = vomitOrgansName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Fluids/vomit_toxin.rsi/vomit_toxin-1.png",
+                Icon = new SpriteSpecifier.Rsi(new("/Textures/Fluids/vomit_toxin.rsi"), "vomit_toxin-1"),
                 Act = () =>
                 {
                     _vomitSystem.Vomit(args.Target, -1000, -1000); // You feel hollow!
-                    var organs = _bodySystem.GetBodyOrganComponents<TransformComponent>(args.Target, body);
+                    var organs = _bodySystem.GetBodyOrganEntityComps<TransformComponent>((args.Target, body));
                     var baseXform = Transform(args.Target);
-                    foreach (var (xform, organ) in organs)
+                    foreach (var organ in organs)
                     {
-                        if (HasComp<BrainComponent>(xform.Owner) || HasComp<EyeComponent>(xform.Owner))
+                        if (HasComp<BrainComponent>(organ.Owner) || HasComp<EyeComponent>(organ.Owner))
                             continue;
 
-                        var coordinates = baseXform.Coordinates.Offset(_random.NextVector2(0.5f, 0.75f));
-                        _bodySystem.DropOrganAt(organ.Owner, coordinates, organ);
+                        _transformSystem.PlaceNextTo((organ.Owner, organ.Comp1), (args.Target, baseXform));
                     }
 
                     _popupSystem.PopupEntity(Loc.GetString("admin-smite-vomit-organs-self"), args.Target,
-                        Filter.Entities(args.Target), PopupType.LargeCaution);
+                        args.Target, PopupType.LargeCaution);
                     _popupSystem.PopupCoordinates(Loc.GetString("admin-smite-vomit-organs-others", ("name", args.Target)), baseXform.Coordinates,
-                        Filter.PvsExcept(args.Target), PopupType.MediumCaution);
+                        Filter.PvsExcept(args.Target), true, PopupType.MediumCaution);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-vomit-organs-description")
+                Message = string.Join(": ", vomitOrgansName, Loc.GetString("admin-smite-vomit-organs-description"))
             };
             args.Verbs.Add(vomitOrgans);
 
+            var handsRemovalName = Loc.GetString("admin-smite-remove-hands-name").ToLowerInvariant();
             Verb handsRemoval = new()
             {
-                Text = "Remove hands",
+                Text = handsRemovalName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Interface/AdminActions/remove-hands.png",
+                Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/AdminActions/remove-hands.png")),
                 Act = () =>
                 {
                     var baseXform = Transform(args.Target);
                     foreach (var part in _bodySystem.GetBodyChildrenOfType(args.Target, BodyPartType.Hand))
                     {
-                        _bodySystem.DropPartAt(part.Id, baseXform.Coordinates, part.Component);
+                        _transformSystem.AttachToGridOrMap(part.Id);
                     }
                     _popupSystem.PopupEntity(Loc.GetString("admin-smite-remove-hands-self"), args.Target,
-                        Filter.Entities(args.Target), PopupType.LargeCaution);
-                    _popupSystem.PopupCoordinates(Loc.GetString("admin-smite-remove-hands-others", ("name", args.Target)), baseXform.Coordinates,
-                        Filter.PvsExcept(args.Target), PopupType.Medium);
+                        args.Target, PopupType.LargeCaution);
+                    _popupSystem.PopupCoordinates(Loc.GetString("admin-smite-remove-hands-other", ("name", args.Target)), baseXform.Coordinates,
+                        Filter.PvsExcept(args.Target), true, PopupType.Medium);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-remove-hands-description")
+                Message = string.Join(": ", handsRemovalName, Loc.GetString("admin-smite-remove-hands-description"))
             };
             args.Verbs.Add(handsRemoval);
 
+            var handRemovalName = Loc.GetString("admin-smite-remove-hand-name").ToLowerInvariant();
             Verb handRemoval = new()
             {
-                Text = "Remove hands",
+                Text = handRemovalName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Interface/AdminActions/remove-hand.png",
+                Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/AdminActions/remove-hand.png")),
                 Act = () =>
                 {
                     var baseXform = Transform(args.Target);
-                    foreach (var part in _bodySystem.GetBodyChildrenOfType(body.Owner, BodyPartType.Hand, body))
+                    foreach (var part in _bodySystem.GetBodyChildrenOfType(args.Target, BodyPartType.Hand, body))
                     {
-                        _bodySystem.DropPartAt(part.Id, baseXform.Coordinates, part.Component);
+                        _transformSystem.AttachToGridOrMap(part.Id);
                         break;
                     }
                     _popupSystem.PopupEntity(Loc.GetString("admin-smite-remove-hands-self"), args.Target,
-                        Filter.Entities(args.Target), PopupType.LargeCaution);
-                    _popupSystem.PopupCoordinates(Loc.GetString("admin-smite-remove-hands-others", ("name", args.Target)), baseXform.Coordinates,
-                        Filter.PvsExcept(args.Target), PopupType.Medium);
+                        args.Target, PopupType.LargeCaution);
+                    _popupSystem.PopupCoordinates(Loc.GetString("admin-smite-remove-hands-other", ("name", args.Target)), baseXform.Coordinates,
+                        Filter.PvsExcept(args.Target), true, PopupType.Medium);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-remove-hand-description")
+                Message = string.Join(": ", handRemovalName, Loc.GetString("admin-smite-remove-hand-description"))
             };
             args.Verbs.Add(handRemoval);
 
+            var stomachRemovalName = Loc.GetString("admin-smite-stomach-removal-name").ToLowerInvariant();
             Verb stomachRemoval = new()
             {
-                Text = "Stomach Removal",
+                Text = stomachRemovalName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Mobs/Species/Human/organs.rsi/stomach.png",
+                Icon = new SpriteSpecifier.Rsi(new ("/Textures/Mobs/Species/Human/organs.rsi"), "stomach"),
                 Act = () =>
                 {
-                    foreach (var (component, _) in _bodySystem.GetBodyOrganComponents<StomachComponent>(args.Target, body))
+                    foreach (var entity in _bodySystem.GetBodyOrganEntityComps<StomachComponent>((args.Target, body)))
                     {
-                        QueueDel(component.Owner);
+                        QueueDel(entity.Owner);
                     }
 
                     _popupSystem.PopupEntity(Loc.GetString("admin-smite-stomach-removal-self"), args.Target,
-                        Filter.Entities(args.Target), PopupType.LargeCaution);
+                        args.Target, PopupType.LargeCaution);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-stomach-removal-description"),
+                Message = string.Join(": ", stomachRemovalName, Loc.GetString("admin-smite-stomach-removal-description"))
             };
             args.Verbs.Add(stomachRemoval);
 
+            var lungRemovalName = Loc.GetString("admin-smite-lung-removal-name").ToLowerInvariant();
             Verb lungRemoval = new()
             {
-                Text = "Lungs Removal",
+                Text = lungRemovalName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Mobs/Species/Human/organs.rsi/lung-r.png",
+                Icon = new SpriteSpecifier.Rsi(new ("/Textures/Mobs/Species/Human/organs.rsi"), "lung-r"),
                 Act = () =>
                 {
-                    foreach (var (component, _) in _bodySystem.GetBodyOrganComponents<LungComponent>(args.Target, body))
+                    foreach (var entity in _bodySystem.GetBodyOrganEntityComps<LungComponent>((args.Target, body)))
                     {
-                        QueueDel(component.Owner);
+                        QueueDel(entity.Owner);
                     }
 
                     _popupSystem.PopupEntity(Loc.GetString("admin-smite-lung-removal-self"), args.Target,
-                        Filter.Entities(args.Target), PopupType.LargeCaution);
+                        args.Target, PopupType.LargeCaution);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-lung-removal-description"),
+                Message = string.Join(": ", lungRemovalName, Loc.GetString("admin-smite-lung-removal-description"))
             };
             args.Verbs.Add(lungRemoval);
         }
 
         if (TryComp<PhysicsComponent>(args.Target, out var physics))
         {
+            var pinballName = Loc.GetString("admin-smite-pinball-name").ToLowerInvariant();
             Verb pinball = new()
             {
-                Text = "Pinball",
+                Text = pinballName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Objects/Fun/toys.rsi/basketball.png",
+                Icon = new SpriteSpecifier.Rsi(new ("/Textures/Objects/Fun/toys.rsi"), "basketball"),
                 Act = () =>
                 {
                     var xform = Transform(args.Target);
                     var fixtures = Comp<FixturesComponent>(args.Target);
                     xform.Anchored = false; // Just in case.
-                    physics.BodyType = BodyType.Dynamic;
-                    physics.BodyStatus = BodyStatus.InAir;
-                    physics.WakeBody();
-                    foreach (var (_, fixture) in fixtures.Fixtures)
+                    _physics.SetBodyType(args.Target, BodyType.Dynamic, manager: fixtures, body: physics);
+                    _physics.SetBodyStatus(args.Target, physics, BodyStatus.InAir);
+                    _physics.WakeBody(args.Target, manager: fixtures, body: physics);
+
+                    foreach (var fixture in fixtures.Fixtures.Values)
                     {
                         if (!fixture.Hard)
                             continue;
-                        fixture.Restitution = 1.1f;
+
+                        _physics.SetRestitution(args.Target, fixture, 1.1f, false, fixtures);
                     }
 
-                    physics.LinearVelocity = _random.NextVector2(1.5f, 1.5f);
-                    physics.AngularVelocity = MathF.PI * 12;
-                    physics.LinearDamping = 0.0f;
-                    physics.AngularDamping = 0.0f;
+                    _fixtures.FixtureUpdate(args.Target, manager: fixtures, body: physics);
+
+                    _physics.SetLinearVelocity(args.Target, _random.NextVector2(1.5f, 1.5f), manager: fixtures, body: physics);
+                    _physics.SetAngularVelocity(args.Target, MathF.PI * 12, manager: fixtures, body: physics);
+                    _physics.SetLinearDamping(args.Target, physics, 0f);
+                    _physics.SetAngularDamping(args.Target, physics, 0f);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-pinball-description")
+                Message = string.Join(": ", pinballName, Loc.GetString("admin-smite-pinball-description"))
             };
             args.Verbs.Add(pinball);
 
+            var yeetName = Loc.GetString("admin-smite-yeet-name").ToLowerInvariant();
             Verb yeet = new()
             {
-                Text = "Yeet",
+                Text = yeetName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Interface/VerbIcons/eject.svg.192dpi.png",
+                Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/VerbIcons/eject.svg.192dpi.png")),
                 Act = () =>
                 {
                     var xform = Transform(args.Target);
                     var fixtures = Comp<FixturesComponent>(args.Target);
                     xform.Anchored = false; // Just in case.
-                    physics.BodyType = BodyType.Dynamic;
-                    physics.BodyStatus = BodyStatus.InAir;
-                    physics.WakeBody();
-                    foreach (var (_, fixture) in fixtures.Fixtures)
+
+                    _physics.SetBodyType(args.Target, BodyType.Dynamic, body: physics);
+                    _physics.SetBodyStatus(args.Target, physics, BodyStatus.InAir);
+                    _physics.WakeBody(args.Target, manager: fixtures, body: physics);
+
+                    foreach (var fixture in fixtures.Fixtures.Values)
                     {
-                        fixture.Hard = false;
+                        _physics.SetHard(args.Target, fixture, false, manager: fixtures);
                     }
 
-                    physics.LinearVelocity = _random.NextVector2(8.0f, 8.0f);
-                    physics.AngularVelocity = MathF.PI * 12;
-                    physics.LinearDamping = 0.0f;
-                    physics.AngularDamping = 0.0f;
+                    _physics.SetLinearVelocity(args.Target, _random.NextVector2(8.0f, 8.0f), manager: fixtures, body: physics);
+                    _physics.SetAngularVelocity(args.Target, MathF.PI * 12, manager: fixtures, body: physics);
+                    _physics.SetLinearDamping(args.Target, physics, 0f);
+                    _physics.SetAngularDamping(args.Target, physics, 0f);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-yeet-description")
+                Message = string.Join(": ", yeetName, Loc.GetString("admin-smite-yeet-description"))
             };
             args.Verbs.Add(yeet);
         }
 
+        var breadName = Loc.GetString("admin-smite-become-bread-name").ToLowerInvariant(); // Will I get cancelled for breadName-ing you?
         Verb bread = new()
         {
-            Text = "Become Bread",
+            Text = breadName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Objects/Consumable/Food/Baked/bread.rsi/plain.png",
+            Icon = new SpriteSpecifier.Rsi(new ("/Textures/Objects/Consumable/Food/Baked/bread.rsi"), "plain"),
             Act = () =>
             {
-                _polymorphableSystem.PolymorphEntity(args.Target, "AdminBreadSmite");
+                _polymorphSystem.PolymorphEntity(args.Target, "AdminBreadSmite");
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-become-bread-description")
+            Message = string.Join(": ", breadName, Loc.GetString("admin-smite-become-bread-description"))
         };
         args.Verbs.Add(bread);
 
+        var mouseName = Loc.GetString("admin-smite-become-mouse-name").ToLowerInvariant();
         Verb mouse = new()
         {
-            Text = "Become Mouse",
+            Text = mouseName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Mobs/Animals/mouse.rsi/icon-0.png",
+            Icon = new SpriteSpecifier.Rsi(new ("/Textures/Mobs/Animals/mouse.rsi"), "icon-0"),
             Act = () =>
             {
-                _polymorphableSystem.PolymorphEntity(args.Target, "AdminMouseSmite");
+                _polymorphSystem.PolymorphEntity(args.Target, "AdminMouseSmite");
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-become-mouse-description")
+            Message = string.Join(": ", mouseName, Loc.GetString("admin-smite-become-mouse-description"))
         };
         args.Verbs.Add(mouse);
 
         if (TryComp<ActorComponent>(args.Target, out var actorComponent))
         {
+            var ghostKickName = Loc.GetString("admin-smite-ghostkick-name").ToLowerInvariant();
             Verb ghostKick = new()
             {
-                Text = "Ghostkick",
+                Text = ghostKickName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Interface/gavel.svg.192dpi.png",
+                Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/gavel.svg.192dpi.png")),
                 Act = () =>
                 {
-                    _ghostKickManager.DoDisconnect(actorComponent.PlayerSession.ConnectedClient, "Smitten.");
+                    _ghostKickManager.DoDisconnect(actorComponent.PlayerSession.Channel, "Smitten.");
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-ghostkick-description")
+                Message = string.Join(": ", ghostKickName, Loc.GetString("admin-smite-ghostkick-description"))
+
             };
             args.Verbs.Add(ghostKick);
         }
 
-        if (TryComp<InventoryComponent>(args.Target, out var inventory)) {
+        if (TryComp<InventoryComponent>(args.Target, out var inventory))
+        {
+            var nyanifyName = Loc.GetString("admin-smite-nyanify-name").ToLowerInvariant();
             Verb nyanify = new()
             {
-                Text = "Nyanify",
+                Text = nyanifyName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Clothing/Head/Hats/catears.rsi/icon.png",
+                Icon = new SpriteSpecifier.Rsi(new ("/Textures/Clothing/Head/Hats/catears.rsi"), "icon"),
                 Act = () =>
                 {
                     var ears = Spawn("ClothingHeadHatCatEars", Transform(args.Target).Coordinates);
@@ -532,49 +543,48 @@ public sealed partial class AdminVerbSystem
                     _inventorySystem.TryEquip(args.Target, ears, "head", true, true, false, inventory);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-nyanify-description")
+                Message = string.Join(": ", nyanifyName, Loc.GetString("admin-smite-nyanify-description"))
             };
             args.Verbs.Add(nyanify);
 
+            var killSignName = Loc.GetString("admin-smite-kill-sign-name").ToLowerInvariant();
             Verb killSign = new()
             {
-                Text = "Kill sign",
+                Text = killSignName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Objects/Misc/killsign.rsi/icon.png",
+                Icon = new SpriteSpecifier.Rsi(new ("/Textures/Objects/Misc/killsign.rsi"), "icon"),
                 Act = () =>
                 {
                     EnsureComp<KillSignComponent>(args.Target);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-kill-sign-description")
+                Message = string.Join(": ", killSignName, Loc.GetString("admin-smite-kill-sign-description"))
             };
             args.Verbs.Add(killSign);
 
-            // TODO: Port cluwne outfit.
-            Verb clown = new()
+            var cluwneName = Loc.GetString("admin-smite-cluwne-name").ToLowerInvariant();
+            Verb cluwne = new()
             {
-                Text = "Clown",
+                Text = cluwneName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Objects/Fun/bikehorn.rsi/icon.png",
+
+                Icon = new SpriteSpecifier.Rsi(new ("/Textures/Clothing/Mask/cluwne.rsi"), "icon"),
+
                 Act = () =>
                 {
-                    SetOutfitCommand.SetOutfit(args.Target, "ClownGear", EntityManager, (_, clothing) =>
-                    {
-                        if (HasComp<ClothingComponent>(clothing))
-                            EnsureComp<UnremoveableComponent>(clothing);
-                        EnsureComp<ClumsyComponent>(args.Target);
-                    });
+                    EnsureComp<CluwneComponent>(args.Target);
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-clown-description")
+                Message = string.Join(": ", cluwneName, Loc.GetString("admin-smite-cluwne-description"))
             };
-            args.Verbs.Add(clown);
+            args.Verbs.Add(cluwne);
 
+            var maidenName = Loc.GetString("admin-smite-maid-name").ToLowerInvariant();
             Verb maiden = new()
             {
-                Text = "Maid",
+                Text = maidenName,
                 Category = VerbCategory.Smite,
-                IconTexture = "/Textures/Clothing/Uniforms/Jumpskirt/janimaid.rsi/icon.png",
+                Icon = new SpriteSpecifier.Rsi(new ("/Textures/Clothing/Uniforms/Jumpskirt/janimaid.rsi"), "icon"),
                 Act = () =>
                 {
                     SetOutfitCommand.SetOutfit(args.Target, "JanitorMaidGear", EntityManager, (_, clothing) =>
@@ -585,108 +595,112 @@ public sealed partial class AdminVerbSystem
                     });
                 },
                 Impact = LogImpact.Extreme,
-                Message = Loc.GetString("admin-smite-maid-description")
+                Message = string.Join(": ", maidenName, Loc.GetString("admin-smite-maid-description"))
             };
             args.Verbs.Add(maiden);
-
-
         }
 
+        var angerPointingArrowsName = Loc.GetString("admin-smite-anger-pointing-arrows-name").ToLowerInvariant();
         Verb angerPointingArrows = new()
         {
-            Text = "Anger Pointing Arrows",
+            Text = angerPointingArrowsName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Interface/Misc/pointing.rsi/pointing.png",
+            Icon = new SpriteSpecifier.Rsi(new ("/Textures/Interface/Misc/pointing.rsi"), "pointing"),
             Act = () =>
             {
                 EnsureComp<PointingArrowAngeringComponent>(args.Target);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-anger-pointing-arrows-description")
+            Message = string.Join(": ", angerPointingArrowsName, Loc.GetString("admin-smite-anger-pointing-arrows-description"))
         };
         args.Verbs.Add(angerPointingArrows);
 
+        var dustName = Loc.GetString("admin-smite-dust-name").ToLowerInvariant();
         Verb dust = new()
         {
-            Text = "Dust",
+            Text = dustName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Objects/Materials/materials.rsi/ash.png",
+            Icon = new SpriteSpecifier.Rsi(new ("/Textures/Objects/Materials/materials.rsi"), "ash"),
             Act = () =>
             {
                 EntityManager.QueueDeleteEntity(args.Target);
                 Spawn("Ash", Transform(args.Target).Coordinates);
-                _popupSystem.PopupEntity(Loc.GetString("admin-smite-turned-ash-other", ("name", args.Target)), args.Target,
-                    Filter.Pvs(args.Target), PopupType.LargeCaution);
+                _popupSystem.PopupEntity(Loc.GetString("admin-smite-turned-ash-other", ("name", args.Target)), args.Target, PopupType.LargeCaution);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-dust-description"),
+            Message = string.Join(": ", dustName, Loc.GetString("admin-smite-dust-description"))
         };
         args.Verbs.Add(dust);
 
+        var youtubeVideoSimulationName = Loc.GetString("admin-smite-buffering-name").ToLowerInvariant();
         Verb youtubeVideoSimulation = new()
         {
-            Text = "Buffering",
+            Text = youtubeVideoSimulationName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Interface/Misc/buffering_smite_icon.png",
+            Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/Misc/buffering_smite_icon.png")),
             Act = () =>
             {
                 EnsureComp<BufferingComponent>(args.Target);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-buffering-description"),
+            Message = string.Join(": ", youtubeVideoSimulationName, Loc.GetString("admin-smite-buffering-description"))
         };
         args.Verbs.Add(youtubeVideoSimulation);
 
+        var instrumentationName = Loc.GetString("admin-smite-become-instrument-name").ToLowerInvariant();
         Verb instrumentation = new()
         {
-            Text = "Become Instrument",
+            Text = instrumentationName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Objects/Fun/Instruments/h_synthesizer.rsi/icon.png",
+            Icon = new SpriteSpecifier.Rsi(new ("/Textures/Objects/Fun/Instruments/h_synthesizer.rsi"), "supersynth"),
             Act = () =>
             {
-                _polymorphableSystem.PolymorphEntity(args.Target, "AdminInstrumentSmite");
+                _polymorphSystem.PolymorphEntity(args.Target, "AdminInstrumentSmite");
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-become-instrument-description"),
+            Message = string.Join(": ", instrumentationName, Loc.GetString("admin-smite-become-instrument-description"))
         };
         args.Verbs.Add(instrumentation);
 
+        var noGravityName = Loc.GetString("admin-smite-remove-gravity-name").ToLowerInvariant();
         Verb noGravity = new()
         {
-            Text = "Remove gravity",
+            Text = noGravityName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Structures/Machines/gravity_generator.rsi/off.png",
+            Icon = new SpriteSpecifier.Rsi(new("/Textures/Structures/Machines/gravity_generator.rsi"), "off"),
             Act = () =>
             {
                 var grav = EnsureComp<MovementIgnoreGravityComponent>(args.Target);
                 grav.Weightless = true;
 
-                Dirty(grav);
+                Dirty(args.Target, grav);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-remove-gravity-description"),
+            Message = string.Join(": ", noGravityName, Loc.GetString("admin-smite-remove-gravity-description"))
         };
         args.Verbs.Add(noGravity);
 
+        var reptilianName = Loc.GetString("admin-smite-reptilian-species-swap-name").ToLowerInvariant();
         Verb reptilian = new()
         {
-            Text = "Reptilian Species Swap",
+            Text = reptilianName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Objects/Fun/toys.rsi/plushie_lizard.png",
+            Icon = new SpriteSpecifier.Rsi(new ("/Textures/Objects/Fun/toys.rsi"), "plushie_lizard"),
             Act = () =>
             {
-                _polymorphableSystem.PolymorphEntity(args.Target, "AdminLizardSmite");
+                _polymorphSystem.PolymorphEntity(args.Target, "AdminLizardSmite");
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-reptilian-species-swap-description"),
+            Message = string.Join(": ", reptilianName, Loc.GetString("admin-smite-reptilian-species-swap-description"))
         };
         args.Verbs.Add(reptilian);
 
+        var lockerName = Loc.GetString("admin-smite-locker-stuff-name").ToLowerInvariant();
         Verb locker = new()
         {
-            Text = "Locker stuff",
+            Text = lockerName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Structures/Storage/closet.rsi/generic.png",
+            Icon = new SpriteSpecifier.Rsi(new ("/Textures/Structures/Storage/closet.rsi"), "generic"),
             Act = () =>
             {
                 var xform = Transform(args.Target);
@@ -697,127 +711,217 @@ public sealed partial class AdminVerbSystem
                     _entityStorageSystem.Insert(args.Target, locker, storage);
                     _entityStorageSystem.ToggleOpen(args.Target, locker, storage);
                 }
-                _weldableSystem.ForceWeldedState(locker, true);
+                _weldableSystem.SetWeldedState(locker, true);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-locker-stuff-description"),
+            Message = string.Join(": ", lockerName, Loc.GetString("admin-smite-locker-stuff-description"))
         };
         args.Verbs.Add(locker);
 
+        var headstandName = Loc.GetString("admin-smite-headstand-name").ToLowerInvariant();
         Verb headstand = new()
         {
-            Text = "Headstand",
+            Text = headstandName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Interface/VerbIcons/refresh.svg.192dpi.png",
+            Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/VerbIcons/refresh.svg.192dpi.png")),
             Act = () =>
             {
                 EnsureComp<HeadstandComponent>(args.Target);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-headstand-description"),
+            Message = string.Join(": ", headstandName, Loc.GetString("admin-smite-headstand-description"))
         };
         args.Verbs.Add(headstand);
 
+        var zoomInName = Loc.GetString("admin-smite-zoom-in-name").ToLowerInvariant();
         Verb zoomIn = new()
         {
-            Text = "Zoom in",
+            Text = zoomInName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Interface/AdminActions/zoom.png",
+            Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/AdminActions/zoom.png")),
             Act = () =>
             {
-                var eye = EnsureComp<EyeComponent>(args.Target);
-
-                eye.Zoom *= Vector2.One * 0.2f;
-
-                Dirty(eye);
+                var eye = EnsureComp<ContentEyeComponent>(args.Target);
+                _eyeSystem.SetZoom(args.Target, eye.TargetZoom * 0.2f, ignoreLimits: true);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-zoom-in-description"),
+            Message = string.Join(": ", zoomInName, Loc.GetString("admin-smite-zoom-in-description"))
         };
         args.Verbs.Add(zoomIn);
 
+        var flipEyeName = Loc.GetString("admin-smite-flip-eye-name").ToLowerInvariant();
         Verb flipEye = new()
         {
-            Text = "Flip eye",
+            Text = flipEyeName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Interface/AdminActions/flip.png",
+            Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/AdminActions/flip.png")),
             Act = () =>
             {
-                var eye = EnsureComp<EyeComponent>(args.Target);
-
-                eye.Zoom *= -1;
-
-                Dirty(eye);
+                var eye = EnsureComp<ContentEyeComponent>(args.Target);
+                _eyeSystem.SetZoom(args.Target, eye.TargetZoom * -1, ignoreLimits: true);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-flip-eye-description"),
+            Message = string.Join(": ", flipEyeName, Loc.GetString("admin-smite-flip-eye-description"))
         };
         args.Verbs.Add(flipEye);
 
+        var runWalkSwapName = Loc.GetString("admin-smite-run-walk-swap-name").ToLowerInvariant();
         Verb runWalkSwap = new()
         {
-            Text = "Run Walk Swap",
+            Text = runWalkSwapName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Interface/AdminActions/run-walk-swap.png",
+            Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/AdminActions/run-walk-swap.png")),
             Act = () =>
             {
                 var movementSpeed = EnsureComp<MovementSpeedModifierComponent>(args.Target);
                 (movementSpeed.BaseSprintSpeed, movementSpeed.BaseWalkSpeed) = (movementSpeed.BaseWalkSpeed, movementSpeed.BaseSprintSpeed);
 
-                Dirty(movementSpeed);
+                Dirty(args.Target, movementSpeed);
 
                 _popupSystem.PopupEntity(Loc.GetString("admin-smite-run-walk-swap-prompt"), args.Target,
-                    Filter.Entities(args.Target), PopupType.LargeCaution);
+                    args.Target, PopupType.LargeCaution);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-run-walk-swap-description"),
+            Message = string.Join(": ", runWalkSwapName, Loc.GetString("admin-smite-run-walk-swap-description"))
         };
         args.Verbs.Add(runWalkSwap);
 
+        var backwardsAccentName = Loc.GetString("admin-smite-speak-backwards-name").ToLowerInvariant();
         Verb backwardsAccent = new()
         {
-            Text = "Speak Backwards",
+            Text = backwardsAccentName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Interface/AdminActions/help-backwards.png",
+            Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/AdminActions/help-backwards.png")),
             Act = () =>
             {
                 EnsureComp<BackwardsAccentComponent>(args.Target);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-speak-backwards-description"),
+            Message = string.Join(": ", backwardsAccentName, Loc.GetString("admin-smite-speak-backwards-description"))
         };
         args.Verbs.Add(backwardsAccent);
 
+        var disarmProneName = Loc.GetString("admin-smite-disarm-prone-name").ToLowerInvariant();
         Verb disarmProne = new()
         {
-            Text = "Disarm Prone",
+            Text = disarmProneName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Interface/Actions/disarm.png",
+            Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/Actions/disarm.png")),
             Act = () =>
             {
                 EnsureComp<DisarmProneComponent>(args.Target);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-disarm-prone-description"),
+            Message = string.Join(": ", disarmProneName, Loc.GetString("admin-smite-disarm-prone-description"))
         };
         args.Verbs.Add(disarmProne);
 
+        var superSpeedName = Loc.GetString("admin-smite-super-speed-name").ToLowerInvariant();
         Verb superSpeed = new()
         {
-            Text = "Super speed",
+            Text = superSpeedName,
             Category = VerbCategory.Smite,
-            IconTexture = "/Textures/Interface/AdminActions/super_speed.png",
+            Icon = new SpriteSpecifier.Texture(new ("/Textures/Interface/AdminActions/super_speed.png")),
             Act = () =>
             {
                 var movementSpeed = EnsureComp<MovementSpeedModifierComponent>(args.Target);
                 _movementSpeedModifierSystem?.ChangeBaseSpeed(args.Target, 400, 8000, 40, movementSpeed);
 
                 _popupSystem.PopupEntity(Loc.GetString("admin-smite-super-speed-prompt"), args.Target,
-                    Filter.Entities(args.Target), PopupType.LargeCaution);
+                    args.Target, PopupType.LargeCaution);
             },
             Impact = LogImpact.Extreme,
-            Message = Loc.GetString("admin-smite-super-speed-description"),
+            Message = string.Join(": ", superSpeedName, Loc.GetString("admin-smite-super-speed-description"))
         };
         args.Verbs.Add(superSpeed);
+
+        //Bonk
+        var superBonkLiteName = Loc.GetString("admin-smite-super-bonk-lite-name").ToLowerInvariant();
+        Verb superBonkLite = new()
+        {
+            Text = superBonkLiteName,
+            Category = VerbCategory.Smite,
+            Icon = new SpriteSpecifier.Rsi(new("Structures/Furniture/Tables/glass.rsi"), "full"),
+            Act = () =>
+            {
+                _superBonkSystem.StartSuperBonk(args.Target, stopWhenDead: true);
+            },
+            Impact = LogImpact.Extreme,
+            Message = string.Join(": ", superBonkLiteName, Loc.GetString("admin-smite-super-bonk-lite-description"))
+        };
+        args.Verbs.Add(superBonkLite);
+
+        var superBonkName = Loc.GetString("admin-smite-super-bonk-name").ToLowerInvariant();
+        Verb superBonk = new()
+        {
+            Text = superBonkName,
+            Category = VerbCategory.Smite,
+            Icon = new SpriteSpecifier.Rsi(new("Structures/Furniture/Tables/generic.rsi"), "full"),
+            Act = () =>
+            {
+                _superBonkSystem.StartSuperBonk(args.Target);
+            },
+            Impact = LogImpact.Extreme,
+            Message = string.Join(": ", superBonkName, Loc.GetString("admin-smite-super-bonk-description"))
+        };
+        args.Verbs.Add(superBonk);
+
+        var superslipName = Loc.GetString("admin-smite-super-slip-name").ToLowerInvariant();
+        Verb superslip = new()
+        {
+            Text = superslipName,
+            Category = VerbCategory.Smite,
+            Icon = new SpriteSpecifier.Rsi(new("Objects/Specific/Janitorial/soap.rsi"), "omega-4"),
+            Act = () =>
+            {
+                var hadSlipComponent = EnsureComp(args.Target, out SlipperyComponent slipComponent);
+                if (!hadSlipComponent)
+                {
+                    slipComponent.SuperSlippery = true;
+                    slipComponent.ParalyzeTime = 5;
+                    slipComponent.LaunchForwardsMultiplier = 20;
+                }
+
+                _slipperySystem.TrySlip(args.Target, slipComponent, args.Target, requiresContact: false);
+                if (!hadSlipComponent)
+                {
+                    RemComp(args.Target, slipComponent);
+                }
+            },
+            Impact = LogImpact.Extreme,
+            Message = string.Join(": ", superslipName, Loc.GetString("admin-smite-super-slip-description"))
+        };
+        args.Verbs.Add(superslip);
+
+        var omniaccentName = Loc.GetString("admin-smite-omni-accent-name").ToLowerInvariant();
+        Verb omniaccent = new()
+        {
+            Text = omniaccentName,
+            Category = VerbCategory.Smite,
+            Icon = new SpriteSpecifier.Rsi(new("Interface/Actions/voice-mask.rsi"), "icon"),
+            Act = () =>
+            {
+                EnsureComp<BarkAccentComponent>(args.Target);
+                EnsureComp<BleatingAccentComponent>(args.Target);
+                EnsureComp<FrenchAccentComponent>(args.Target);
+                EnsureComp<GermanAccentComponent>(args.Target);
+                EnsureComp<LizardAccentComponent>(args.Target);
+                EnsureComp<MobsterAccentComponent>(args.Target);
+                EnsureComp<MothAccentComponent>(args.Target);
+                EnsureComp<OwOAccentComponent>(args.Target);
+                EnsureComp<SkeletonAccentComponent>(args.Target);
+                EnsureComp<SouthernAccentComponent>(args.Target);
+                EnsureComp<SpanishAccentComponent>(args.Target);
+                EnsureComp<StutteringAccentComponent>(args.Target);
+
+                if (_random.Next(0, 8) == 0)
+                {
+                    EnsureComp<BackwardsAccentComponent>(args.Target); // was asked to make this at a low chance idk
+                }
+            },
+            Impact = LogImpact.Extreme,
+            Message = string.Join(": ", omniaccentName, Loc.GetString("admin-smite-omni-accent-description"))
+        };
+        args.Verbs.Add(omniaccent);
     }
 }

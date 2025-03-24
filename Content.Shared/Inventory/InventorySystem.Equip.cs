@@ -1,21 +1,22 @@
 using System.Diagnostics.CodeAnalysis;
-using Content.Shared.ActionBlocker;
+using Content.Shared.Armor;
 using Content.Shared.Clothing.Components;
+using Content.Shared.DoAfter;
 using Content.Shared.Hands;
 using Content.Shared.Hands.Components;
 using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Interaction;
-using Content.Shared.Interaction.Events;
 using Content.Shared.Inventory.Events;
 using Content.Shared.Item;
 using Content.Shared.Movement.Systems;
 using Content.Shared.Popups;
+using Content.Shared.Strip;
 using Content.Shared.Strip.Components;
-using Robust.Shared.Audio;
+using Content.Shared.Whitelist;
+using Robust.Shared.Audio.Systems;
 using Robust.Shared.Containers;
-using Robust.Shared.Network;
-using Robust.Shared.Player;
 using Robust.Shared.Timing;
+using Robust.Shared.Utility;
 
 namespace Content.Shared.Inventory;
 
@@ -24,10 +25,18 @@ public abstract partial class InventorySystem
     [Dependency] private readonly SharedPopupSystem _popup = default!;
     [Dependency] private readonly MovementSpeedModifierSystem _movementSpeed = default!;
     [Dependency] private readonly SharedInteractionSystem _interactionSystem = default!;
+    [Dependency] private readonly SharedItemSystem _item = default!;
+    [Dependency] private readonly SharedAudioSystem _audio = default!;
     [Dependency] private readonly SharedContainerSystem _containerSystem = default!;
+    [Dependency] private readonly SharedDoAfterSystem _doAfter = default!;
     [Dependency] private readonly SharedHandsSystem _handsSystem = default!;
     [Dependency] private readonly IGameTiming _gameTiming = default!;
-    [Dependency] private readonly INetManager _netMan = default!;
+    [Dependency] private readonly SharedTransformSystem _transform = default!;
+    [Dependency] private readonly EntityWhitelistSystem _whitelistSystem = default!;
+    [Dependency] private readonly SharedStrippableSystem _strippable = default!;
+
+    [ValidatePrototypeId<ItemSizePrototype>]
+    private const string PocketableItemSize = "Small";
 
     private void InitializeEquip()
     {
@@ -38,46 +47,9 @@ public abstract partial class InventorySystem
         SubscribeAllEvent<UseSlotNetworkMessage>(OnUseSlot);
     }
 
-    protected void QuickEquip(EntityUid uid, ClothingComponent component, UseInHandEvent args)
-    {
-        if (!TryComp(args.User, out InventoryComponent? inv)
-            || !TryComp(args.User, out SharedHandsComponent? hands)
-            || !_prototypeManager.TryIndex<InventoryTemplatePrototype>(inv.TemplateId, out var prototype))
-            return;
-
-        foreach (var slotDef in prototype.Slots)
-        {
-            if (!CanEquip(args.User, uid, slotDef.Name, out _, slotDef, inv))
-                continue;
-
-            if (TryGetSlotEntity(args.User, slotDef.Name, out var slotEntity, inv))
-            {
-                // Item in slot has to be quick equipable as well
-                if (TryComp(slotEntity, out ClothingComponent? item) && !item.QuickEquip)
-                    continue;
-
-                if (!TryUnequip(args.User, slotDef.Name, true, inventory: inv))
-                    continue;
-
-                if (!TryEquip(args.User, uid, slotDef.Name, true, inventory: inv))
-                    continue;
-
-                _handsSystem.PickupOrDrop(args.User, slotEntity.Value);
-            }
-            else
-            {
-                if (!TryEquip(args.User, uid, slotDef.Name, true, inventory: inv))
-                    continue;
-            }
-
-            args.Handled = true;
-            break;
-        }
-    }
-
     private void OnEntRemoved(EntityUid uid, InventoryComponent component, EntRemovedFromContainerMessage args)
     {
-        if(!TryGetSlot(uid, args.Container.ID, out var slotDef, inventory: component))
+        if (!TryGetSlot(uid, args.Container.ID, out var slotDef, inventory: component))
             return;
 
         var unequippedEvent = new DidUnequipEvent(uid, args.Entity, slotDef);
@@ -89,8 +61,8 @@ public abstract partial class InventorySystem
 
     private void OnEntInserted(EntityUid uid, InventoryComponent component, EntInsertedIntoContainerMessage args)
     {
-        if(!TryGetSlot(uid, args.Container.ID, out var slotDef, inventory: component))
-           return;
+        if (!TryGetSlot(uid, args.Container.ID, out var slotDef, inventory: component))
+            return;
 
         var equippedEvent = new DidEquipEvent(uid, args.Entity, slotDef);
         RaiseLocalEvent(uid, equippedEvent, true);
@@ -105,10 +77,10 @@ public abstract partial class InventorySystem
     /// </summary>
     private void OnUseSlot(UseSlotNetworkMessage ev, EntitySessionEventArgs eventArgs)
     {
-        if (eventArgs.SenderSession.AttachedEntity is not EntityUid { Valid: true } actor)
+        if (eventArgs.SenderSession.AttachedEntity is not { Valid: true } actor)
             return;
 
-        if (!TryComp(actor, out InventoryComponent? inventory) || !TryComp<SharedHandsComponent>(actor, out var hands))
+        if (!TryComp(actor, out InventoryComponent? inventory) || !TryComp<HandsComponent>(actor, out var hands))
             return;
 
         var held = hands.ActiveHandEntity;
@@ -125,7 +97,7 @@ public abstract partial class InventorySystem
         // unequip the item.
         if (itemUid != null)
         {
-            if (!TryUnequip(actor, ev.Slot, out var item, predicted: true, inventory: inventory))
+            if (!TryUnequip(actor, ev.Slot, out var item, predicted: true, inventory: inventory, checkDoafter: true))
                 return;
 
             _handsSystem.PickupOrDrop(actor, item.Value);
@@ -139,34 +111,29 @@ public abstract partial class InventorySystem
         // before we drop the item, check that it can be equipped in the first place.
         if (!CanEquip(actor, held.Value, ev.Slot, out var reason))
         {
-            if (_gameTiming.IsFirstTimePredicted)
-                _popup.PopupCursor(Loc.GetString(reason), Filter.Local());
+            _popup.PopupCursor(Loc.GetString(reason));
             return;
         }
 
         if (!_handsSystem.CanDropHeld(actor, hands.ActiveHand!, checkActionBlocker: false))
             return;
 
-        var gotUnequipped = new GotUnequippedHandEvent(actor, held.Value, hands.ActiveHand!);
-        var didUnequip = new DidUnequipHandEvent(actor, held.Value, hands.ActiveHand!);
-        RaiseLocalEvent(held.Value, gotUnequipped, false);
-        RaiseLocalEvent(actor, didUnequip, true);
-        RaiseLocalEvent(held.Value, new HandDeselectedEvent(actor), false);
+        RaiseLocalEvent(held.Value, new HandDeselectedEvent(actor));
 
-        TryEquip(actor, actor, held.Value, ev.Slot, predicted: true, inventory: inventory, force: true);
+        TryEquip(actor, actor, held.Value, ev.Slot, predicted: true, inventory: inventory, force: true, checkDoafter: true);
     }
 
     public bool TryEquip(EntityUid uid, EntityUid itemUid, string slot, bool silent = false, bool force = false, bool predicted = false,
-        InventoryComponent? inventory = null, ClothingComponent? clothing = null) =>
-        TryEquip(uid, uid, itemUid, slot, silent, force, predicted, inventory, clothing);
+        InventoryComponent? inventory = null, ClothingComponent? clothing = null, bool checkDoafter = false) =>
+        TryEquip(uid, uid, itemUid, slot, silent, force, predicted, inventory, clothing, checkDoafter);
 
     public bool TryEquip(EntityUid actor, EntityUid target, EntityUid itemUid, string slot, bool silent = false, bool force = false, bool predicted = false,
-        InventoryComponent? inventory = null, ClothingComponent? clothing = null)
+        InventoryComponent? inventory = null, ClothingComponent? clothing = null, bool checkDoafter = false)
     {
         if (!Resolve(target, ref inventory, false))
         {
-            if(!silent && _gameTiming.IsFirstTimePredicted)
-                _popup.PopupCursor(Loc.GetString("inventory-component-can-equip-cannot"), Filter.Local());
+            if(!silent)
+                _popup.PopupCursor(Loc.GetString("inventory-component-can-equip-cannot"));
             return false;
         }
 
@@ -176,44 +143,54 @@ public abstract partial class InventorySystem
 
         if (!TryGetSlotContainer(target, slot, out var slotContainer, out var slotDefinition, inventory))
         {
-            if(!silent && _gameTiming.IsFirstTimePredicted)
-                _popup.PopupCursor(Loc.GetString("inventory-component-can-equip-cannot"), Filter.Local());
+            if(!silent)
+                _popup.PopupCursor(Loc.GetString("inventory-component-can-equip-cannot"));
             return false;
         }
 
         if (!force && !CanEquip(actor, target, itemUid, slot, out var reason, slotDefinition, inventory, clothing))
         {
-            if(!silent && _gameTiming.IsFirstTimePredicted)
-                _popup.PopupCursor(Loc.GetString(reason), Filter.Local());
+            if(!silent)
+                _popup.PopupCursor(Loc.GetString(reason));
             return false;
         }
 
-        if (!slotContainer.Insert(itemUid))
+        if (checkDoafter &&
+            clothing != null &&
+            clothing.EquipDelay > TimeSpan.Zero &&
+            (clothing.Slots & slotDefinition.SlotFlags) != 0 &&
+            _containerSystem.CanInsert(itemUid, slotContainer))
         {
-            if(!silent && _gameTiming.IsFirstTimePredicted)
-                _popup.PopupCursor(Loc.GetString("inventory-component-can-unequip-cannot"), Filter.Local());
-            return false;
-        }
-
-        if(!silent && clothing != null && clothing.EquipSound != null && _gameTiming.IsFirstTimePredicted)
-        {
-            Filter filter;
-
-            if (_netMan.IsClient)
-                filter = Filter.Local();
-            else
+            var args = new DoAfterArgs(
+                EntityManager,
+                actor,
+                clothing.EquipDelay,
+                new ClothingEquipDoAfterEvent(slot),
+                itemUid,
+                target,
+                itemUid)
             {
-                filter = Filter.Pvs(target);
+                BreakOnMove = true,
+                NeedHand = true,
+            };
 
-                // don't play double audio for predicted interactions
-                if (predicted)
-                    filter.RemoveWhereAttachedEntity(entity => entity == actor);
-            }
-
-            SoundSystem.Play(clothing.EquipSound.GetSound(), filter, target, clothing.EquipSound.Params.WithVolume(-2f));
+            _doAfter.TryStartDoAfter(args);
+            return false;
         }
 
-        inventory.Dirty();
+        if (!_containerSystem.Insert(itemUid, slotContainer))
+        {
+            if(!silent)
+                _popup.PopupCursor(Loc.GetString("inventory-component-can-unequip-cannot"));
+            return false;
+        }
+
+        if (!silent && clothing != null)
+        {
+            _audio.PlayPredicted(clothing.EquipSound, target, actor);
+        }
+
+        Dirty(target, inventory);
 
         _movementSpeed.RefreshMovementSpeedModifiers(target);
 
@@ -232,20 +209,16 @@ public abstract partial class InventorySystem
             return false;
 
         // Can the actor reach the item?
-        if (_interactionSystem.InRangeUnobstructed(actor, itemUid) && _containerSystem.IsInSameOrParentContainer(actor, itemUid))
-            return true;
-
-        // Is the item in an open storage UI, i.e., is the user quick-equipping from an open backpack?
-        if (_interactionSystem.CanAccessViaStorage(actor, itemUid))
+        if (_interactionSystem.InRangeAndAccessible(actor, itemUid))
             return true;
 
         // Is the actor currently stripping the target? Here we could check if the actor has the stripping UI open, but
         // that requires server/client specific code.
         // Uhhh TODO, fix this. This doesn't even fucking check if the target item is IN the targets inventory.
         return actor != target &&
-            HasComp<SharedStrippableComponent>(target) &&
-            HasComp<SharedStrippingComponent>(actor) &&
-            HasComp<SharedHandsComponent>(actor);
+            HasComp<StrippableComponent>(target) &&
+            HasComp<StrippingComponent>(actor) &&
+            HasComp<HandsComponent>(actor);
     }
 
     public bool CanEquip(EntityUid uid, EntityUid itemUid, string slot, [NotNullWhen(false)] out string? reason,
@@ -265,10 +238,29 @@ public abstract partial class InventorySystem
         if (slotDefinition == null && !TryGetSlot(target, slot, out slotDefinition, inventory: inventory))
             return false;
 
-        if (slotDefinition.DependsOn != null && !TryGetSlotEntity(target, slotDefinition.DependsOn, out _, inventory))
-            return false;
+        DebugTools.Assert(slotDefinition.Name == slot);
+        if (slotDefinition.DependsOn != null)
+        {
+            if (!TryGetSlotEntity(target, slotDefinition.DependsOn, out EntityUid? slotEntity, inventory))
+                return false;
 
-        var fittingInPocket = slotDefinition.SlotFlags.HasFlag(SlotFlags.POCKET) && item is { Size: <= (int) ReferenceSizes.Pocket };
+            if (slotDefinition.DependsOnComponents is { } componentRegistry)
+            {
+                foreach (var (_, entry) in componentRegistry)
+                {
+                    if (!HasComp(slotEntity, entry.Component.GetType()))
+                        return false;
+
+                    if (TryComp<AllowSuitStorageComponent>(slotEntity, out var comp) &&
+                        _whitelistSystem.IsWhitelistFailOrNull(comp.Whitelist, itemUid))
+                        return false;
+                }
+            }
+        }
+
+        var fittingInPocket = slotDefinition.SlotFlags.HasFlag(SlotFlags.POCKET) &&
+                              item != null &&
+                              _item.GetSizePrototype(item.Size) <= _item.GetSizePrototype(PocketableItemSize);
         if (clothing == null && !fittingInPocket
             || clothing != null && !clothing.Slots.HasFlag(slotDefinition.SlotFlags) && !fittingInPocket)
         {
@@ -282,13 +274,8 @@ public abstract partial class InventorySystem
             return false;
         }
 
-        if (slotDefinition.Whitelist != null && !slotDefinition.Whitelist.IsValid(itemUid))
-        {
-            reason = "inventory-component-can-equip-does-not-fit";
-            return false;
-        }
-
-        if (slotDefinition.Blacklist != null && slotDefinition.Blacklist.IsValid(itemUid))
+        if (_whitelistSystem.IsWhitelistFail(slotDefinition.Whitelist, itemUid) ||
+            _whitelistSystem.IsBlacklistPass(slotDefinition.Blacklist, itemUid))
         {
             reason = "inventory-component-can-equip-does-not-fit";
             return false;
@@ -321,96 +308,175 @@ public abstract partial class InventorySystem
             reason = itemAttemptEvent.Reason ?? reason;
             return false;
         }
-
         return true;
     }
 
-    public bool TryUnequip(EntityUid uid, string slot, bool silent = false, bool force = false, bool predicted = false,
-        InventoryComponent? inventory = null, ClothingComponent? clothing = null) => TryUnequip(uid, uid, slot, silent, force, predicted, inventory, clothing);
+    public bool TryUnequip(
+        EntityUid uid,
+        string slot,
+        bool silent = false,
+        bool force = false,
+        bool predicted = false,
+        InventoryComponent? inventory = null,
+        ClothingComponent? clothing = null,
+        bool reparent = true,
+        bool checkDoafter = false)
+    {
+        return TryUnequip(uid, uid, slot, silent, force, predicted, inventory, clothing, reparent, checkDoafter);
+    }
 
-    public bool TryUnequip(EntityUid actor, EntityUid target, string slot, bool silent = false,
-        bool force = false, bool predicted = false, InventoryComponent? inventory = null, ClothingComponent? clothing = null) =>
-        TryUnequip(actor, target, slot, out _, silent, force, predicted, inventory, clothing);
+    public bool TryUnequip(
+        EntityUid actor,
+        EntityUid target,
+        string slot,
+        bool silent = false,
+        bool force = false,
+        bool predicted = false,
+        InventoryComponent? inventory = null,
+        ClothingComponent? clothing = null,
+        bool reparent = true,
+        bool checkDoafter = false)
+    {
+        return TryUnequip(actor, target, slot, out _, silent, force, predicted, inventory, clothing, reparent, checkDoafter);
+    }
 
-    public bool TryUnequip(EntityUid uid, string slot, [NotNullWhen(true)] out EntityUid? removedItem, bool silent = false, bool force = false, bool predicted = false,
-        InventoryComponent? inventory = null, ClothingComponent? clothing = null) => TryUnequip(uid, uid, slot, out removedItem, silent, force, predicted, inventory, clothing);
+    public bool TryUnequip(
+        EntityUid uid,
+        string slot,
+        [NotNullWhen(true)] out EntityUid? removedItem,
+        bool silent = false,
+        bool force = false,
+        bool predicted = false,
+        InventoryComponent? inventory = null,
+        ClothingComponent? clothing = null,
+        bool reparent = true,
+        bool checkDoafter = false)
+    {
+        return TryUnequip(uid, uid, slot, out removedItem, silent, force, predicted, inventory, clothing, reparent, checkDoafter);
+    }
 
-    public bool TryUnequip(EntityUid actor, EntityUid target, string slot, [NotNullWhen(true)] out EntityUid? removedItem, bool silent = false,
-        bool force = false, bool predicted = false, InventoryComponent? inventory = null, ClothingComponent? clothing = null)
+    public bool TryUnequip(
+        EntityUid actor,
+        EntityUid target,
+        string slot,
+        [NotNullWhen(true)] out EntityUid? removedItem,
+        bool silent = false,
+        bool force = false,
+        bool predicted = false,
+        InventoryComponent? inventory = null,
+        ClothingComponent? clothing = null,
+        bool reparent = true,
+        bool checkDoafter = false)
+    {
+        var itemsDropped = 0;
+        return TryUnequip(actor, target, slot, out removedItem, ref itemsDropped,
+            silent, force, predicted, inventory, clothing, reparent, checkDoafter);
+    }
+
+    private bool TryUnequip(
+        EntityUid actor,
+        EntityUid target,
+        string slot,
+        [NotNullWhen(true)] out EntityUid? removedItem,
+        ref int itemsDropped,
+        bool silent = false,
+        bool force = false,
+        bool predicted = false,
+        InventoryComponent? inventory = null,
+        ClothingComponent? clothing = null,
+        bool reparent = true,
+        bool checkDoafter = false)
     {
         removedItem = null;
+
+        if (TerminatingOrDeleted(target))
+            return false;
+
         if (!Resolve(target, ref inventory, false))
         {
-            if(!silent && _gameTiming.IsFirstTimePredicted)
-                _popup.PopupCursor(Loc.GetString("inventory-component-can-unequip-cannot"), Filter.Local());
+            if(!silent)
+                _popup.PopupCursor(Loc.GetString("inventory-component-can-unequip-cannot"));
             return false;
         }
 
         if (!TryGetSlotContainer(target, slot, out var slotContainer, out var slotDefinition, inventory))
         {
-            if(!silent && _gameTiming.IsFirstTimePredicted)
-                _popup.PopupCursor(Loc.GetString("inventory-component-can-unequip-cannot"), Filter.Local());
+            if(!silent)
+                _popup.PopupCursor(Loc.GetString("inventory-component-can-unequip-cannot"));
             return false;
         }
 
         removedItem = slotContainer.ContainedEntity;
 
-        if (!removedItem.HasValue) return false;
+        if (!removedItem.HasValue || TerminatingOrDeleted(removedItem.Value))
+            return false;
 
         if (!force && !CanUnequip(actor, target, slot, out var reason, slotContainer, slotDefinition, inventory))
         {
-            if(!silent && _gameTiming.IsFirstTimePredicted)
-                _popup.PopupCursor(Loc.GetString(reason), Filter.Local());
+            if(!silent)
+                _popup.PopupCursor(Loc.GetString(reason));
             return false;
         }
 
         //we need to do this to make sure we are 100% removing this entity, since we are now dropping dependant slots
-        if (!force && !slotContainer.CanRemove(removedItem.Value))
+        if (!force && !_containerSystem.CanRemove(removedItem.Value, slotContainer))
             return false;
 
-        foreach (var slotDef in GetSlots(target, inventory))
+        if (checkDoafter &&
+            Resolve(removedItem.Value, ref clothing, false) &&
+            (clothing.Slots & slotDefinition.SlotFlags) != 0 &&
+            clothing.UnequipDelay > TimeSpan.Zero)
+        {
+            var args = new DoAfterArgs(
+                EntityManager,
+                actor,
+                clothing.UnequipDelay,
+                new ClothingUnequipDoAfterEvent(slot),
+                removedItem.Value,
+                target,
+                removedItem.Value)
+            {
+                BreakOnMove = true,
+                NeedHand = true,
+            };
+
+            _doAfter.TryStartDoAfter(args);
+            return false;
+        }
+
+        if (!_containerSystem.Remove(removedItem.Value, slotContainer, force: force, reparent: reparent))
+            return false;
+
+        // this is in order to keep track of whether this is the first instance of a recursion call
+        var firstRun = itemsDropped == 0;
+        ++itemsDropped;
+
+        foreach (var slotDef in inventory.Slots)
         {
             if (slotDef != slotDefinition && slotDef.DependsOn == slotDefinition.Name)
             {
                 //this recursive call might be risky
-                TryUnequip(actor, target, slotDef.Name, true, true, predicted, inventory);
+                TryUnequip(actor, target, slotDef.Name, out _, ref itemsDropped, true, true, predicted, inventory, reparent: reparent);
             }
         }
 
-        if (force)
+        // we check if any items were dropped, and make a popup if they were.
+        // the reason we check for > 1 is because the first item is always the one we are trying to unequip,
+        // whereas we only want to notify for extra dropped items.
+        if (!silent && _gameTiming.IsFirstTimePredicted && firstRun && itemsDropped > 1)
+            _popup.PopupClient(Loc.GetString("inventory-component-dropped-from-unequip", ("items", itemsDropped - 1)), target, target);
+
+        // TODO: Inventory needs a hot cleanup hoo boy
+        // Check if something else (AKA toggleable) dumped it into a container.
+        if (!_containerSystem.IsEntityInContainer(removedItem.Value))
+            _transform.DropNextTo(removedItem.Value, target);
+
+        if (!silent && Resolve(removedItem.Value, ref clothing, false) && clothing.UnequipSound != null)
         {
-            slotContainer.ForceRemove(removedItem.Value);
-        }
-        else
-        {
-            if (!slotContainer.Remove(removedItem.Value))
-            {
-                //should never happen bc of the canremove lets just keep in just in case
-                return false;
-            }
-        }
-
-        Transform(removedItem.Value).Coordinates = Transform(target).Coordinates;
-
-        if (!silent && Resolve(removedItem.Value, ref clothing, false) && clothing.UnequipSound != null && _gameTiming.IsFirstTimePredicted)
-        {
-            Filter filter;
-
-            if (_netMan.IsClient)
-                filter = Filter.Local();
-            else
-            {
-                filter = Filter.Pvs(target);
-
-                // don't play double audio for predicted interactions
-                if (predicted)
-                    filter.RemoveWhereAttachedEntity(entity => entity == actor);
-            }
-
-            SoundSystem.Play(clothing.UnequipSound.GetSound(), filter, target, clothing.UnequipSound.Params.WithVolume(-2f));
+            _audio.PlayPredicted(clothing.UnequipSound, target, actor);
         }
 
-        inventory.Dirty();
+        Dirty(target, inventory);
 
         _movementSpeed.RefreshMovementSpeedModifiers(target);
 
@@ -431,13 +497,11 @@ public abstract partial class InventorySystem
         if ((containerSlot == null || slotDefinition == null) && !TryGetSlotContainer(target, slot, out containerSlot, out slotDefinition, inventory))
             return false;
 
-        if (containerSlot.ContainedEntity == null)
+        if (containerSlot.ContainedEntity is not { } itemUid)
             return false;
 
-        if (!containerSlot.ContainedEntity.HasValue || !containerSlot.CanRemove(containerSlot.ContainedEntity.Value))
+        if (!_containerSystem.CanRemove(itemUid, containerSlot))
             return false;
-
-        var itemUid = containerSlot.ContainedEntity.Value;
 
         // make sure the user can actually reach the target
         if (!CanAccess(actor, target, itemUid))

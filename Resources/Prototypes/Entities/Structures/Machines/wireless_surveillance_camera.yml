@@ -1,6 +1,6 @@
 - type: entity
   abstract: true
-  parent: [ BaseStructureDynamic, ConstructibleMachine ]
+  parent: [ BaseStructureDynamic, SmallConstructibleMachine ]
   id: SurveillanceWirelessCameraBase
   name: wireless camera
   description: A camera. It's watching you. Kinda.
@@ -10,26 +10,32 @@
     - type: WirelessNetworkConnection
       range: 200
     - type: Damageable
-      damageContainer: Inorganic
+      damageContainer: StructuralInorganic
       damageModifierSet: Metallic
     - type: Rotatable
       rotateWhileAnchored: true
     - type: Fixtures
       fixtures:
-        - shape:
+        fix1:
+          shape:
             !type:PhysShapeCircle
             radius: 0.45
           density: 80
           mask:
             - MachineMask
+          layer:
+            - BulletImpassable
     - type: SurveillanceCameraMicrophone
       blacklist:
         components:
           - SurveillanceCamera
           - SurveillanceCameraMonitor
+          - RadioSpeaker
+    - type: ActiveListener
+      range: 10
     - type: UserInterface
       interfaces:
-        - key: enum.SurveillanceCameraSetupUiKey.Camera
+        enum.SurveillanceCameraSetupUiKey.Camera:
           type: SurveillanceCameraSetupBoundUi
   placement:
     mode: SnapgridCenter
@@ -45,6 +51,8 @@
     - type: Anchorable
     - type: Transform
       anchored: true
+    - type: Physics
+      bodyType: Static
     - type: Sprite
       noRot: true
       sprite: Structures/monitors.rsi

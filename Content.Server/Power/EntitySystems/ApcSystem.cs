@@ -1,254 +1,218 @@
+using Content.Server.Emp;
 using Content.Server.Popups;
 using Content.Server.Power.Components;
-using Content.Server.Tools;
-using Content.Server.Wires;
-using Content.Shared.Access.Components;
+using Content.Server.Power.Pow3r;
 using Content.Shared.Access.Systems;
 using Content.Shared.APC;
 using Content.Shared.Emag.Systems;
-using Content.Shared.Examine;
-using Content.Shared.Interaction;
 using Content.Shared.Popups;
-using Content.Shared.Tools.Components;
-using Content.Shared.Wires;
-using JetBrains.Annotations;
+using Content.Shared.Rounding;
 using Robust.Server.GameObjects;
 using Robust.Shared.Audio;
-using Robust.Shared.Player;
+using Robust.Shared.Audio.Systems;
 using Robust.Shared.Timing;
 
-namespace Content.Server.Power.EntitySystems
+namespace Content.Server.Power.EntitySystems;
+
+public sealed class ApcSystem : EntitySystem
 {
-    [UsedImplicitly]
-    internal sealed class ApcSystem : EntitySystem
+    [Dependency] private readonly AccessReaderSystem _accessReader = default!;
+    [Dependency] private readonly IGameTiming _gameTiming = default!;
+    [Dependency] private readonly EmagSystem _emag = default!;
+    [Dependency] private readonly PopupSystem _popup = default!;
+    [Dependency] private readonly SharedAppearanceSystem _appearance = default!;
+    [Dependency] private readonly SharedAudioSystem _audio = default!;
+    [Dependency] private readonly UserInterfaceSystem _ui = default!;
+
+    public override void Initialize()
     {
-        [Dependency] private readonly AccessReaderSystem _accessReader = default!;
-        [Dependency] private readonly UserInterfaceSystem _userInterfaceSystem = default!;
-        [Dependency] private readonly PopupSystem _popupSystem = default!;
-        [Dependency] private readonly IGameTiming _gameTiming = default!;
-        [Dependency] private readonly ToolSystem _toolSystem = default!;
+        base.Initialize();
 
-        private const float ScrewTime = 2f;
+        UpdatesAfter.Add(typeof(PowerNetSystem));
 
-        public override void Initialize()
+        SubscribeLocalEvent<ApcComponent, BoundUIOpenedEvent>(OnBoundUiOpen);
+        SubscribeLocalEvent<ApcComponent, ComponentStartup>(OnApcStartup);
+        SubscribeLocalEvent<ApcComponent, ChargeChangedEvent>(OnBatteryChargeChanged);
+        SubscribeLocalEvent<ApcComponent, ApcToggleMainBreakerMessage>(OnToggleMainBreaker);
+        SubscribeLocalEvent<ApcComponent, GotEmaggedEvent>(OnEmagged);
+
+        SubscribeLocalEvent<ApcComponent, EmpPulseEvent>(OnEmpPulse);
+    }
+
+    public override void Update(float deltaTime)
+    {
+        var query = EntityQueryEnumerator<ApcComponent, PowerNetworkBatteryComponent, UserInterfaceComponent>();
+        while (query.MoveNext(out var uid, out var apc, out var battery, out var ui))
         {
-            base.Initialize();
-
-            UpdatesAfter.Add(typeof(PowerNetSystem));
-
-            SubscribeLocalEvent<ApcComponent, MapInitEvent>(OnApcInit);
-            SubscribeLocalEvent<ApcComponent, ChargeChangedEvent>(OnBatteryChargeChanged);
-            SubscribeLocalEvent<ApcComponent, ApcToggleMainBreakerMessage>(OnToggleMainBreaker);
-            SubscribeLocalEvent<ApcComponent, GotEmaggedEvent>(OnEmagged);
-
-            SubscribeLocalEvent<ApcToolFinishedEvent>(OnToolFinished);
-            SubscribeLocalEvent<ApcComponent, InteractUsingEvent>(OnInteractUsing);
-            SubscribeLocalEvent<ApcComponent, ExaminedEvent>(OnExamine);
-        }
-
-        // Change the APC's state only when the battery state changes, or when it's first created.
-        private void OnBatteryChargeChanged(EntityUid uid, ApcComponent component, ChargeChangedEvent args)
-        {
-            UpdateApcState(uid, component);
-        }
-
-        private void OnApcInit(EntityUid uid, ApcComponent component, MapInitEvent args)
-        {
-            UpdateApcState(uid, component);
-        }
-        private void OnToggleMainBreaker(EntityUid uid, ApcComponent component, ApcToggleMainBreakerMessage args)
-        {
-            TryComp<AccessReaderComponent>(uid, out var access);
-            if (args.Session.AttachedEntity == null)
-                return;
-
-            if (access == null || _accessReader.IsAllowed(args.Session.AttachedEntity.Value, access))
+            if (apc.LastUiUpdate + ApcComponent.VisualsChangeDelay < _gameTiming.CurTime && _ui.IsUiOpen((uid, ui), ApcUiKey.Key))
             {
-                ApcToggleBreaker(uid, component);
-            }
-            else
-            {
-                _popupSystem.PopupCursor(Loc.GetString("apc-component-insufficient-access"),
-                    Filter.Entities(args.Session.AttachedEntity.Value), PopupType.Medium);
-            }
-        }
-
-        public void ApcToggleBreaker(EntityUid uid, ApcComponent? apc = null, PowerNetworkBatteryComponent? battery = null)
-        {
-            if (!Resolve(uid, ref apc, ref battery))
-                return;
-
-            apc.MainBreakerEnabled = !apc.MainBreakerEnabled;
-            battery.CanDischarge = apc.MainBreakerEnabled;
-
-            UpdateUIState(uid, apc);
-            SoundSystem.Play(apc.OnReceiveMessageSound.GetSound(), Filter.Pvs(uid), uid, AudioParams.Default.WithVolume(-2f));
-        }
-
-        private void OnEmagged(EntityUid uid, ApcComponent comp, GotEmaggedEvent args)
-        {
-            if(!comp.Emagged)
-            {
-                comp.Emagged = true;
-                args.Handled = true;
-            }
-        }
-
-        public void UpdateApcState(EntityUid uid,
-            ApcComponent? apc=null,
-            BatteryComponent? battery=null)
-        {
-            if (!Resolve(uid, ref apc, ref battery))
-                return;
-
-            if (TryComp(uid, out AppearanceComponent? appearance))
-            {
-                UpdatePanelAppearance(uid, appearance, apc);
+                apc.LastUiUpdate = _gameTiming.CurTime;
+                UpdateUIState(uid, apc, battery);
             }
 
-            var newState = CalcChargeState(uid, apc, battery);
-            if (newState != apc.LastChargeState && apc.LastChargeStateTime + ApcComponent.VisualsChangeDelay < _gameTiming.CurTime)
+            if (apc.NeedStateUpdate)
+            {
+                UpdateApcState(uid, apc, battery);
+            }
+        }
+    }
+
+    // Change the APC's state only when the battery state changes, or when it's first created.
+    private void OnBatteryChargeChanged(EntityUid uid, ApcComponent component, ref ChargeChangedEvent args)
+    {
+        UpdateApcState(uid, component);
+    }
+
+    private static void OnApcStartup(EntityUid uid, ApcComponent component, ComponentStartup args)
+    {
+        // We cannot update immediately, as various network/battery state is not valid yet.
+        // Defer until the next tick.
+        component.NeedStateUpdate = true;
+    }
+
+    private void OnBoundUiOpen(EntityUid uid, ApcComponent component, BoundUIOpenedEvent args)
+    {
+        UpdateApcState(uid, component);
+    }
+
+    private void OnToggleMainBreaker(EntityUid uid, ApcComponent component, ApcToggleMainBreakerMessage args)
+    {
+        var attemptEv = new ApcToggleMainBreakerAttemptEvent();
+        RaiseLocalEvent(uid, ref attemptEv);
+        if (attemptEv.Cancelled)
+        {
+            _popup.PopupCursor(Loc.GetString("apc-component-on-toggle-cancel"),
+                args.Actor, PopupType.Medium);
+            return;
+        }
+
+        if (_accessReader.IsAllowed(args.Actor, uid))
+        {
+            ApcToggleBreaker(uid, component);
+        }
+        else
+        {
+            _popup.PopupCursor(Loc.GetString("apc-component-insufficient-access"),
+                args.Actor, PopupType.Medium);
+        }
+    }
+
+    public void ApcToggleBreaker(EntityUid uid, ApcComponent? apc = null, PowerNetworkBatteryComponent? battery = null)
+    {
+        if (!Resolve(uid, ref apc, ref battery))
+            return;
+
+        apc.MainBreakerEnabled = !apc.MainBreakerEnabled;
+        battery.CanDischarge = apc.MainBreakerEnabled;
+
+        UpdateUIState(uid, apc);
+        _audio.PlayPvs(apc.OnReceiveMessageSound, uid, AudioParams.Default.WithVolume(-2f));
+    }
+
+    private void OnEmagged(EntityUid uid, ApcComponent comp, ref GotEmaggedEvent args)
+    {
+        if (!_emag.CompareFlag(args.Type, EmagType.Interaction))
+            return;
+
+        if (_emag.CheckFlag(uid, EmagType.Interaction))
+            return;
+
+        args.Handled = true;
+    }
+
+    public void UpdateApcState(EntityUid uid,
+        ApcComponent? apc=null,
+        PowerNetworkBatteryComponent? battery = null)
+    {
+        if (!Resolve(uid, ref apc, ref battery, false))
+            return;
+
+        if (apc.LastChargeStateTime == null || apc.LastChargeStateTime + ApcComponent.VisualsChangeDelay < _gameTiming.CurTime)
+        {
+            var newState = CalcChargeState(uid, battery.NetworkBattery);
+            if (newState != apc.LastChargeState)
             {
                 apc.LastChargeState = newState;
                 apc.LastChargeStateTime = _gameTiming.CurTime;
 
-                if (appearance != null)
+                if (TryComp(uid, out AppearanceComponent? appearance))
                 {
-                    appearance.SetData(ApcVisuals.ChargeState, newState);
+                    _appearance.SetData(uid, ApcVisuals.ChargeState, newState, appearance);
                 }
             }
-
-            var extPowerState = CalcExtPowerState(uid, apc, battery);
-            if (extPowerState != apc.LastExternalState
-                || apc.LastUiUpdate + ApcComponent.VisualsChangeDelay < _gameTiming.CurTime)
-            {
-                apc.LastExternalState = extPowerState;
-                apc.LastUiUpdate = _gameTiming.CurTime;
-                UpdateUIState(uid, apc, battery);
-            }
         }
 
-        public void UpdateUIState(EntityUid uid,
-            ApcComponent? apc = null,
-            BatteryComponent? battery = null,
-            ServerUserInterfaceComponent? ui = null)
+        var extPowerState = CalcExtPowerState(uid, battery.NetworkBattery);
+        if (extPowerState != apc.LastExternalState)
         {
-            if (!Resolve(uid, ref apc, ref battery, ref ui))
-                return;
-
-            if (_userInterfaceSystem.GetUiOrNull(uid, ApcUiKey.Key, ui) is { } bui)
-            {
-                bui.SetState(new ApcBoundInterfaceState(apc.MainBreakerEnabled, apc.LastExternalState, battery.CurrentCharge / battery.MaxCharge));
-            }
+            apc.LastExternalState = extPowerState;
+            UpdateUIState(uid, apc, battery);
         }
 
-        public ApcChargeState CalcChargeState(EntityUid uid,
-            ApcComponent? apc=null,
-            BatteryComponent? battery=null)
+        apc.NeedStateUpdate = false;
+    }
+
+    public void UpdateUIState(EntityUid uid,
+        ApcComponent? apc = null,
+        PowerNetworkBatteryComponent? netBat = null,
+        UserInterfaceComponent? ui = null)
+    {
+        if (!Resolve(uid, ref apc, ref netBat, ref ui))
+            return;
+
+        var battery = netBat.NetworkBattery;
+        const int ChargeAccuracy = 5;
+
+        // TODO: Fix ContentHelpers or make a new one coz this is cooked.
+        var charge = ContentHelpers.RoundToNearestLevels(battery.CurrentStorage / battery.Capacity, 1.0, 100 / ChargeAccuracy) / 100f * ChargeAccuracy;
+
+        var state = new ApcBoundInterfaceState(apc.MainBreakerEnabled,
+            (int) MathF.Ceiling(battery.CurrentSupply), apc.LastExternalState,
+            charge);
+
+        _ui.SetUiState((uid, ui), ApcUiKey.Key, state);
+    }
+
+    private ApcChargeState CalcChargeState(EntityUid uid, PowerState.Battery battery)
+    {
+        if (_emag.CheckFlag(uid, EmagType.Interaction))
+            return ApcChargeState.Emag;
+
+        if (battery.CurrentStorage / battery.Capacity > ApcComponent.HighPowerThreshold)
         {
-            if (apc != null && apc.Emagged)
-                return ApcChargeState.Emag;
-
-            if (!Resolve(uid, ref apc, ref battery))
-                return ApcChargeState.Lack;
-
-            var chargeFraction = battery.CurrentCharge / battery.MaxCharge;
-
-            if (chargeFraction > ApcComponent.HighPowerThreshold)
-            {
-                return ApcChargeState.Full;
-            }
-
-            var netBattery = Comp<PowerNetworkBatteryComponent>(uid);
-            var delta = netBattery.CurrentSupply - netBattery.CurrentReceiving;
-
-            return delta < 0 ? ApcChargeState.Charging : ApcChargeState.Lack;
+            return ApcChargeState.Full;
         }
 
-        public ApcExternalPowerState CalcExtPowerState(EntityUid uid,
-            ApcComponent? apc=null,
-            BatteryComponent? battery=null)
+        var delta = battery.CurrentSupply - battery.CurrentReceiving;
+        return delta < 0 ? ApcChargeState.Charging : ApcChargeState.Lack;
+    }
+
+    private ApcExternalPowerState CalcExtPowerState(EntityUid uid, PowerState.Battery battery)
+    {
+        if (battery.CurrentReceiving == 0 && !MathHelper.CloseTo(battery.CurrentStorage / battery.Capacity, 1))
         {
-            if (!Resolve(uid, ref apc, ref battery))
-                return ApcExternalPowerState.None;
-
-            var netBat = Comp<PowerNetworkBatteryComponent>(uid);
-            if (netBat.CurrentReceiving == 0 && !MathHelper.CloseTo(battery.CurrentCharge / battery.MaxCharge, 1))
-            {
-                return ApcExternalPowerState.None;
-            }
-
-            var delta = netBat.CurrentReceiving - netBat.CurrentSupply;
-            if (!MathHelper.CloseToPercent(delta, 0, 0.1f) && delta < 0)
-            {
-                return ApcExternalPowerState.Low;
-            }
-
-            return ApcExternalPowerState.Good;
+            return ApcExternalPowerState.None;
         }
 
-        public static ApcPanelState GetPanelState(ApcComponent apc)
+        var delta = battery.CurrentSupply - battery.CurrentReceiving;
+        if (!MathHelper.CloseToPercent(delta, 0, 0.1f) && delta < 0)
         {
-            if (apc.IsApcOpen)
-                return ApcPanelState.Open;
-            else
-                return ApcPanelState.Closed;
+            return ApcExternalPowerState.Low;
         }
 
-        private void OnInteractUsing(EntityUid uid, ApcComponent component, InteractUsingEvent args)
+        return ApcExternalPowerState.Good;
+    }
+
+    private void OnEmpPulse(EntityUid uid, ApcComponent component, ref EmpPulseEvent args)
+    {
+        if (component.MainBreakerEnabled)
         {
-            if (!EntityManager.TryGetComponent(args.Used, out ToolComponent? tool))
-                return;
-            if (_toolSystem.UseTool(args.Used, args.User, uid, 0f, ScrewTime, new string[] { "Screwing" }, doAfterCompleteEvent: new ApcToolFinishedEvent(uid), toolComponent: tool))
-            {
-                args.Handled = true;
-            }
-        }
-
-        private void OnToolFinished(ApcToolFinishedEvent args)
-        {
-            if (!EntityManager.TryGetComponent(args.Target, out ApcComponent? component))
-                return;
-            component.IsApcOpen = !component.IsApcOpen;
-
-            if (TryComp(args.Target, out AppearanceComponent? appearance))
-            {
-                UpdatePanelAppearance(args.Target, appearance);
-            }
-
-            if (component.IsApcOpen)
-            {
-                SoundSystem.Play(component.ScrewdriverOpenSound.GetSound(), Filter.Pvs(args.Target), args.Target);
-            }
-            else
-            {
-                SoundSystem.Play(component.ScrewdriverCloseSound.GetSound(), Filter.Pvs(args.Target), args.Target);
-            }
-        }
-
-        private void UpdatePanelAppearance(EntityUid uid, AppearanceComponent? appearance = null, ApcComponent? apc = null)
-        {
-            if (!Resolve(uid, ref appearance, ref apc, false))
-                return;
-
-            appearance.SetData(ApcVisuals.PanelState, GetPanelState(apc));
-        }
-
-        private sealed class ApcToolFinishedEvent : EntityEventArgs
-        {
-            public EntityUid Target { get; }
-
-            public ApcToolFinishedEvent(EntityUid target)
-            {
-                Target = target;
-            }
-        }
-
-        private void OnExamine(EntityUid uid, ApcComponent component, ExaminedEvent args)
-        {
-            args.PushMarkup(Loc.GetString(component.IsApcOpen
-                ? "apc-component-on-examine-panel-open"
-                : "apc-component-on-examine-panel-closed"));
+            args.Affected = true;
+            args.Disabled = true;
+            ApcToggleBreaker(uid, component);
         }
     }
 }
+
+[ByRefEvent]
+public record struct ApcToggleMainBreakerAttemptEvent(bool Cancelled);

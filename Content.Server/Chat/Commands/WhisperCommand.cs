@@ -1,6 +1,5 @@
-﻿using Content.Server.Chat.Systems;
+using Content.Server.Chat.Systems;
 using Content.Shared.Administration;
-using Robust.Server.Player;
 using Robust.Shared.Console;
 using Robust.Shared.Enums;
 
@@ -15,9 +14,9 @@ namespace Content.Server.Chat.Commands
 
         public void Execute(IConsoleShell shell, string argStr, string[] args)
         {
-            if (shell.Player is not IPlayerSession player)
+            if (shell.Player is not { } player)
             {
-                shell.WriteError("This command cannot be run from the server.");
+                shell.WriteError(Loc.GetString("shell-cannot-run-command-from-server"));
                 return;
             }
 
@@ -37,7 +36,8 @@ namespace Content.Server.Chat.Commands
             if (string.IsNullOrEmpty(message))
                 return;
 
-            EntitySystem.Get<ChatSystem>().TrySendInGameICMessage(playerEntity, message, InGameICChatType.Whisper, false, shell, player);
+            IoCManager.Resolve<IEntitySystemManager>().GetEntitySystem<ChatSystem>()
+                .TrySendInGameICMessage(playerEntity, message, InGameICChatType.Whisper, ChatTransmitRange.Normal, false, shell, player);
         }
     }
 }

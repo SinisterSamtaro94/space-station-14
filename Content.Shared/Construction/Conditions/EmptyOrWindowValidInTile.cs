@@ -6,16 +6,16 @@ namespace Content.Shared.Construction.Conditions
 {
     [UsedImplicitly]
     [DataDefinition]
-    public sealed class EmptyOrWindowValidInTile : IConstructionCondition
+    public sealed partial class EmptyOrWindowValidInTile : IConstructionCondition
     {
         [DataField("tileNotBlocked")]
-        private readonly TileNotBlocked _tileNotBlocked = new();
+        private TileNotBlocked _tileNotBlocked = new();
 
         public bool Condition(EntityUid user, EntityCoordinates location, Direction direction)
         {
             var result = false;
 
-            foreach (var entity in location.GetEntitiesInTile(LookupFlags.Approximate | LookupFlags.Anchored))
+            foreach (var entity in location.GetEntitiesInTile(LookupFlags.Approximate | LookupFlags.Static))
             {
                 if (IoCManager.Resolve<IEntityManager>().HasComponent<SharedCanBuildWindowOnTopComponent>(entity))
                     result = true;

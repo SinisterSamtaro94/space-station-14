@@ -3,8 +3,8 @@ using Robust.Shared.GameStates;
 
 namespace Content.Client.Administration.Components;
 
-[RegisterComponent, NetworkedComponent]
-public sealed class HeadstandComponent : SharedHeadstandComponent
+[RegisterComponent]
+public sealed partial class HeadstandComponent : SharedHeadstandComponent
 {
 
 }

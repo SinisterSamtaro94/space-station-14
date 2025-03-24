@@ -1,9 +1,7 @@
 ﻿using System.Text;
 using Content.Server.Database;
 using Content.Shared.Administration;
-using Robust.Server.Player;
 using Robust.Shared.Console;
-
 
 namespace Content.Server.Administration.Commands
 {
@@ -16,7 +14,7 @@ namespace Content.Server.Administration.Commands
 
         public async void Execute(IConsoleShell shell, string argStr, string[] args)
         {
-            var player = shell.Player as IPlayerSession;
+            var player = shell.Player;
             var dbMan = IoCManager.Resolve<IServerDbManager>();
 
             if (args.Length != 1)
@@ -27,7 +25,7 @@ namespace Content.Server.Administration.Commands
 
             if (!int.TryParse(args[0], out var banId))
             {
-                shell.WriteLine($"Unable to parse {args[1]} as a ban id integer.\n{Help}");
+                shell.WriteLine($"Unable to parse {args[0]} as a ban id integer.\n{Help}");
                 return;
             }
 

@@ -1,3 +1,4 @@
+using System.Numerics;
 using Robust.Client.Graphics;
 using Robust.Client.ResourceManagement;
 using Robust.Shared.Enums;
@@ -8,6 +9,7 @@ public sealed class HTNOverlay : Overlay
 {
     private readonly IEntityManager _entManager = default!;
     private readonly Font _font = default!;
+    private readonly SharedTransformSystem _transformSystem;
 
     public override OverlaySpace Space => OverlaySpace.ScreenSpace;
 
@@ -15,6 +17,7 @@ public sealed class HTNOverlay : Overlay
     {
         _entManager = entManager;
         _font = new VectorFont(resourceCache.GetResource<FontResource>("/Fonts/NotoSans/NotoSans-Regular.ttf"), 10);
+        _transformSystem = _entManager.System<SharedTransformSystem>();
     }
 
     protected override void Draw(in OverlayDrawArgs args)
@@ -29,13 +32,13 @@ public sealed class HTNOverlay : Overlay
             if (string.IsNullOrEmpty(comp.DebugText) || xform.MapID != args.MapId)
                 continue;
 
-            var worldPos = xform.WorldPosition;
+            var worldPos = _transformSystem.GetWorldPosition(xform);
 
             if (!args.WorldAABB.Contains(worldPos))
                 continue;
 
             var screenPos = args.ViewportControl.WorldToScreen(worldPos);
-            handle.DrawString(_font, screenPos + new Vector2(0, 10f), comp.DebugText);
+            handle.DrawString(_font, screenPos + new Vector2(0, 10f), comp.DebugText, Color.White);
         }
     }
 }

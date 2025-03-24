@@ -1,127 +1,95 @@
-using Content.Client.Examine;
-using Content.Client.Storage.UI;
-using Content.Client.UserInterface.Controls;
-using Content.Client.Verbs;
-using Content.Shared.Input;
-using Content.Shared.Interaction;
+using System.Numerics;
+using Content.Client.UserInterface.Systems.Storage;
+using Content.Client.UserInterface.Systems.Storage.Controls;
+using Content.Shared.Storage;
 using JetBrains.Annotations;
-using Robust.Client.GameObjects;
 using Robust.Client.UserInterface;
 using Robust.Client.UserInterface.Controls;
-using Robust.Shared.Input;
-using static Content.Shared.Storage.SharedStorageComponent;
 
-namespace Content.Client.Storage
+namespace Content.Client.Storage;
+
+[UsedImplicitly]
+public sealed class StorageBoundUserInterface : BoundUserInterface
 {
-    [UsedImplicitly]
-    public sealed class StorageBoundUserInterface : BoundUserInterface
+    private StorageWindow? _window;
+
+    public Vector2? Position => _window?.Position;
+
+    public StorageBoundUserInterface(EntityUid owner, Enum uiKey) : base(owner, uiKey)
     {
-        [ViewVariables] private StorageWindow? _window;
+    }
 
-        public StorageBoundUserInterface(ClientUserInterfaceComponent owner, Enum uiKey) : base(owner, uiKey)
+    protected override void Open()
+    {
+        base.Open();
+
+        _window = IoCManager.Resolve<IUserInterfaceManager>()
+            .GetUIController<StorageUIController>()
+            .CreateStorageWindow(this);
+
+        if (EntMan.TryGetComponent(Owner, out StorageComponent? storage))
         {
+            _window.UpdateContainer((Owner, storage));
         }
 
-        protected override void Open()
-        {
-            base.Open();
+        _window.OnClose += Close;
+        _window.FlagDirty();
+    }
 
-            if (_window == null)
-            {
-                var entMan = IoCManager.Resolve<IEntityManager>();
-                _window = new StorageWindow(entMan)
-                    {Title = entMan.GetComponent<MetaDataComponent>(Owner.Owner).EntityName};
+    public void Refresh()
+    {
+        _window?.FlagDirty();
+    }
 
-                _window.EntityList.GenerateItem += _window.GenerateButton;
-                _window.EntityList.ItemPressed += InteractWithItem;
-                _window.StorageContainerButton.OnPressed += TouchedContainerButton;
+    public void Reclaim()
+    {
+        if (_window == null)
+            return;
 
-                _window.OnClose += Close;
-                _window.OpenCenteredLeft();
-            }
-            else
-            {
-                _window.Open();
-            }
-        }
+        _window.OnClose -= Close;
+        _window.Orphan();
+        _window = null;
+    }
 
-        public void InteractWithItem(BaseButton.ButtonEventArgs args, ListData cData)
-        {
-            if (cData is not EntityListData {Uid: var entity})
-                return;
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        Reclaim();
+    }
 
-            if (args.Event.Function == EngineKeyFunctions.UIClick)
-            {
-                SendMessage(new StorageInteractWithItemEvent(entity));
-            }
-            else if (IoCManager.Resolve<IEntityManager>().EntityExists(entity))
-            {
-                OnButtonPressed(args.Event, entity);
-            }
-        }
+    public void CloseWindow(Vector2 position)
+    {
+        if (_window == null)
+            return;
 
-        private void OnButtonPressed(GUIBoundKeyEventArgs args, EntityUid entity)
-        {
-            var entitySys = IoCManager.Resolve<IEntitySystemManager>();
-            var entities = IoCManager.Resolve<IEntityManager>();
+        // Update its position before potentially saving.
+        // Listen it makes sense okay.
+        LayoutContainer.SetPosition(_window, position);
+        _window?.Close();
+    }
 
-            if (args.Function == ContentKeyFunctions.ExamineEntity)
-            {
-                entitySys.GetEntitySystem<ExamineSystem>()
-                    .DoExamine(entity);
-            }
-            else if (args.Function == EngineKeyFunctions.UseSecondary)
-            {
-                entitySys.GetEntitySystem<VerbSystem>().VerbMenu.OpenVerbMenu(entity);
-            }
-            else if (args.Function == ContentKeyFunctions.ActivateItemInWorld)
-            {
-                entities.EntityNetManager?.SendSystemNetworkMessage(
-                    new InteractInventorySlotEvent(entity, altInteract: false));
-            }
-            else if (args.Function == ContentKeyFunctions.AltActivateItemInWorld)
-            {
-                entities.RaisePredictiveEvent(new InteractInventorySlotEvent(entity, altInteract: true));
-            }
-            else
-            {
-                return;
-            }
+    public void Hide()
+    {
+        if (_window == null)
+            return;
 
-            args.Handle();
-        }
+        _window.Visible = false;
+    }
 
-        public void TouchedContainerButton(BaseButton.ButtonEventArgs args)
-        {
-            SendMessage(new StorageInsertItemMessage());
-        }
+    public void Show()
+    {
+        if (_window == null)
+            return;
 
-        protected override void UpdateState(BoundUserInterfaceState state)
-        {
-            base.UpdateState(state);
+        _window.Visible = true;
+    }
 
-            if (_window == null || state is not StorageBoundUserInterfaceState cast)
-                return;
+    public void Show(Vector2 position)
+    {
+        if (_window == null)
+            return;
 
-            _window?.BuildEntityList(cast);
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            base.Dispose(disposing);
-            if (!disposing)
-                return;
-
-            if (_window != null)
-            {
-                _window.EntityList.GenerateItem -= _window.GenerateButton;
-                _window.EntityList.ItemPressed -= InteractWithItem;
-                _window.StorageContainerButton.OnPressed -= TouchedContainerButton;
-                _window.OnClose -= Close;
-            }
-
-            _window?.Dispose();
-            _window = null;
-        }
+        Show();
+        LayoutContainer.SetPosition(_window, position);
     }
 }

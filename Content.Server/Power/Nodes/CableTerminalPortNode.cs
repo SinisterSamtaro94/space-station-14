@@ -1,16 +1,17 @@
 using Content.Server.NodeContainer;
 using Content.Server.NodeContainer.Nodes;
 using Robust.Shared.Map;
+using Robust.Shared.Map.Components;
 
 namespace Content.Server.Power.Nodes
 {
     [DataDefinition]
-    public sealed class CableTerminalPortNode : Node
+    public sealed partial class CableTerminalPortNode : Node
     {
         public override IEnumerable<Node> GetReachableNodes(TransformComponent xform,
             EntityQuery<NodeContainerComponent> nodeQuery,
             EntityQuery<TransformComponent> xformQuery,
-            IMapGrid? grid,
+            MapGridComponent? grid,
             IEntityManager entMan)
         {
             if (!xform.Anchored || grid == null)

@@ -3,8 +3,9 @@ using Content.Shared.Chemistry.Components;
 using Content.Shared.Chemistry.Reaction;
 using Content.Shared.Chemistry.Reagent;
 using Content.Shared.FixedPoint;
+using Content.Shared.Movement.Components;
+using Content.Shared.Movement.Systems;
 using Content.Shared.Slippery;
-using Content.Shared.StepTrigger;
 using Content.Shared.StepTrigger.Components;
 using Content.Shared.StepTrigger.Systems;
 using JetBrains.Annotations;
@@ -14,32 +15,41 @@ namespace Content.Server.Chemistry.TileReactions
 {
     [UsedImplicitly]
     [DataDefinition]
-    public sealed class SpillTileReaction : ITileReaction
+    public sealed partial class SpillTileReaction : ITileReaction
     {
-        [DataField("launchForwardsMultiplier")] private float _launchForwardsMultiplier = 1;
-        [DataField("requiredSlipSpeed")] private float _requiredSlipSpeed = 6;
-        [DataField("paralyzeTime")] private float _paralyzeTime = 1;
-        [DataField("overflow")] private bool _overflow;
+        [DataField("launchForwardsMultiplier")] public float LaunchForwardsMultiplier = 1;
+        [DataField("requiredSlipSpeed")] public float RequiredSlipSpeed = 6;
+        [DataField("paralyzeTime")] public float ParalyzeTime = 1;
 
-        public FixedPoint2 TileReact(TileRef tile, ReagentPrototype reagent, FixedPoint2 reactVolume)
+        /// <summary>
+        /// <see cref="SlipperyComponent.SuperSlippery"/>
+        /// </summary>
+        [DataField("superSlippery")] public bool SuperSlippery;
+
+        public FixedPoint2 TileReact(TileRef tile,
+            ReagentPrototype reagent,
+            FixedPoint2 reactVolume,
+            IEntityManager entityManager,
+            List<ReagentData>? data)
         {
-            if (reactVolume < 5) return FixedPoint2.Zero;
+            if (reactVolume < 5)
+                return FixedPoint2.Zero;
 
-            var entityManager = IoCManager.Resolve<IEntityManager>();
-
-            // TODO Make this not puddle smear.
-            var puddle = entityManager.EntitySysManager.GetEntitySystem<SpillableSystem>()
-                .SpillAt(tile, new Solution(reagent.ID, reactVolume), "PuddleSmear", _overflow, false, true);
-
-            if (puddle != null)
+            if (entityManager.EntitySysManager.GetEntitySystem<PuddleSystem>()
+                .TrySpillAt(tile, new Solution(reagent.ID, reactVolume, data), out var puddleUid, false, false))
             {
-                var slippery = entityManager.EnsureComponent<SlipperyComponent>(puddle.Owner);
-                slippery.LaunchForwardsMultiplier = _launchForwardsMultiplier;
-                slippery.ParalyzeTime = _paralyzeTime;
-                entityManager.Dirty(slippery);
+                var slippery = entityManager.EnsureComponent<SlipperyComponent>(puddleUid);
+                slippery.LaunchForwardsMultiplier = LaunchForwardsMultiplier;
+                slippery.ParalyzeTime = ParalyzeTime;
+                slippery.SuperSlippery = SuperSlippery;
+                entityManager.Dirty(puddleUid, slippery);
 
-                var step = entityManager.EnsureComponent<StepTriggerComponent>(puddle.Owner);
-                entityManager.EntitySysManager.GetEntitySystem<StepTriggerSystem>().SetRequiredTriggerSpeed(puddle.Owner, _requiredSlipSpeed, step);
+                var step = entityManager.EnsureComponent<StepTriggerComponent>(puddleUid);
+                entityManager.EntitySysManager.GetEntitySystem<StepTriggerSystem>().SetRequiredTriggerSpeed(puddleUid, RequiredSlipSpeed, step);
+
+                var slow = entityManager.EnsureComponent<SpeedModifierContactsComponent>(puddleUid);
+                var speedModifier = 1 - reagent.Viscosity;
+                entityManager.EntitySysManager.GetEntitySystem<SpeedModifierContactsSystem>().ChangeModifiers(puddleUid, speedModifier, slow);
 
                 return reactVolume;
             }

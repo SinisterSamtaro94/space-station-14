@@ -15,6 +15,16 @@
         ents: []
   - type: StaticPrice
     price: 100
+  - type: Tag
+    tags:
+      - Trash
+  - type: Extractable
+    juiceSolution:
+      reagents:
+      - ReagentId: Fat
+        Quantity: 3
+      - ReagentId: Blood
+        Quantity: 10
 
 - type: entity
   id: TorsoVox
@@ -22,14 +32,20 @@
   parent: PartVox
   components:
     - type: Sprite
-      netsync: false
       sprite: Mobs/Species/Vox/parts.rsi
-      state: "torso_m"
+      state: "torso"
     - type: Icon
       sprite: Mobs/Species/Vox/parts.rsi
-      state: "torso_m"
+      state: "torso"
     - type: BodyPart
       partType: Torso
+    - type: Extractable
+      juiceSolution:
+        reagents:
+        - ReagentId: Fat
+          Quantity: 3
+        - ReagentId: Blood
+          Quantity: 10
 
 - type: entity
   id: HeadVox
@@ -37,25 +53,26 @@
   parent: PartVox
   components:
     - type: Sprite
-      netsync: false
       sprite: Mobs/Species/Vox/parts.rsi
-      state: "head_m"
+      state: "head"
     - type: Icon
       sprite: Mobs/Species/Vox/parts.rsi
-      state: "head_m"
+      state: "head"
     - type: BodyPart
       partType: Head
       vital: true
     - type: Input
       context: "ghost"
-    - type: MovementSpeedModifier
-      baseWalkSpeed: 0
-      baseSprintSpeed: 0
-    - type: InputMover
-    - type: GhostOnMove
     - type: Tag
       tags:
         - Head
+    - type: Extractable
+      juiceSolution:
+        reagents:
+        - ReagentId: Fat
+          Quantity: 5
+        - ReagentId: Blood
+          Quantity: 10
 
 - type: entity
   id: LeftArmVox
@@ -63,7 +80,6 @@
   parent: PartVox
   components:
     - type: Sprite
-      netsync: false
       sprite: Mobs/Species/Vox/parts.rsi
       state: "l_arm"
     - type: Icon
@@ -79,7 +95,6 @@
   parent: PartVox
   components:
     - type: Sprite
-      netsync: false
       sprite: Mobs/Species/Vox/parts.rsi
       state: "r_arm"
     - type: Icon
@@ -95,7 +110,6 @@
   parent: PartVox
   components:
     - type: Sprite
-      netsync: false
       sprite: Mobs/Species/Vox/parts.rsi
       state: "l_hand"
     - type: Icon
@@ -111,7 +125,6 @@
   parent: PartVox
   components:
     - type: Sprite
-      netsync: false
       sprite: Mobs/Species/Vox/parts.rsi
       state: "r_hand"
     - type: Icon
@@ -127,7 +140,6 @@
   parent: PartVox
   components:
     - type: Sprite
-      netsync: false
       sprite: Mobs/Species/Vox/parts.rsi
       state: "l_leg"
     - type: Icon
@@ -136,6 +148,7 @@
     - type: BodyPart
       partType: Leg
       symmetry: Left
+    - type: MovementBodyPart
 
 - type: entity
   id: RightLegVox
@@ -143,7 +156,6 @@
   parent: PartVox
   components:
     - type: Sprite
-      netsync: false
       sprite: Mobs/Species/Vox/parts.rsi
       state: "r_leg"
     - type: Icon
@@ -152,6 +164,7 @@
     - type: BodyPart
       partType: Leg
       symmetry: Right
+    - type: MovementBodyPart
 
 - type: entity
   id: LeftFootVox
@@ -159,7 +172,6 @@
   parent: PartVox
   components:
     - type: Sprite
-      netsync: false
       sprite: Mobs/Species/Vox/parts.rsi
       state: "l_foot"
     - type: Icon
@@ -175,7 +187,6 @@
   parent: PartVox
   components:
     - type: Sprite
-      netsync: false
       sprite: Mobs/Species/Vox/parts.rsi
       state: "r_foot"
     - type: Icon

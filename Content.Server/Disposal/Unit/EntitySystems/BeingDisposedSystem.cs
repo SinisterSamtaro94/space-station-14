@@ -1,4 +1,5 @@
 ﻿using Content.Server.Atmos.EntitySystems;
+using Content.Server.Body.Systems;
 using Content.Server.Disposal.Unit.Components;
 
 namespace Content.Server.Disposal.Unit.EntitySystems;
@@ -19,6 +20,7 @@ public sealed class BeingDisposedSystem : EntitySystem
         if (TryComp<DisposalHolderComponent>(component.Holder, out var holder))
         {
             args.Gas = holder.Air;
+            args.Handled = true;
         }
     }
 

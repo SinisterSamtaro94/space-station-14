@@ -2,19 +2,19 @@ using Content.Shared.Interaction;
 
 namespace Content.Server.NPC.HTN.PrimitiveTasks.Operators;
 
-public sealed class RotateToTargetOperator : HTNOperator
+public sealed partial class RotateToTargetOperator : HTNOperator
 {
     [Dependency] private readonly IEntityManager _entityManager = default!;
     private RotateToFaceSystem _rotate = default!;
 
-    [ViewVariables, DataField("targetKey")]
+    [DataField("targetKey")]
     public string TargetKey = "RotateTarget";
 
-    [ViewVariables, DataField("rotateSpeedKey")]
+    [DataField("rotateSpeedKey")]
     public string RotationSpeedKey = NPCBlackboard.RotateSpeed;
 
     // Didn't use a key because it's likely the same between all NPCs
-    [ViewVariables, DataField("tolerance")]
+    [DataField("tolerance")]
     public Angle Tolerance = Angle.FromDegrees(1);
 
     public override void Initialize(IEntitySystemManager sysManager)
@@ -23,9 +23,9 @@ public sealed class RotateToTargetOperator : HTNOperator
         _rotate = sysManager.GetEntitySystem<RotateToFaceSystem>();
     }
 
-    public override void Shutdown(NPCBlackboard blackboard, HTNOperatorStatus status)
+    public override void TaskShutdown(NPCBlackboard blackboard, HTNOperatorStatus status)
     {
-        base.Shutdown(blackboard, status);
+        base.TaskShutdown(blackboard, status);
         blackboard.Remove<Angle>(TargetKey);
     }
 

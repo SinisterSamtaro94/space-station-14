@@ -3,6 +3,7 @@ using Content.Shared.Examine;
 using Content.Shared.Maps;
 using JetBrains.Annotations;
 using Robust.Shared.Map;
+using Robust.Shared.Map.Components;
 using Robust.Shared.Utility;
 
 namespace Content.Server.Construction.Conditions
@@ -12,7 +13,7 @@ namespace Content.Server.Construction.Conditions
     /// </summary>
     [UsedImplicitly]
     [DataDefinition]
-    public sealed class ComponentInTile : IGraphCondition
+    public sealed partial class ComponentInTile : IGraphCondition
     {
         /// <summary>
         ///     If true, any entity on the tile must have the component.
@@ -22,13 +23,13 @@ namespace Content.Server.Construction.Conditions
         public bool HasEntity { get; private set; }
 
         [DataField("examineText")]
-        public string? ExamineText { get; }
+        public string? ExamineText { get; private set; }
 
         [DataField("guideText")]
-        public string? GuideText { get; }
+        public string? GuideText { get; private set; }
 
         [DataField("guideIcon")]
-        public SpriteSpecifier? GuideIcon { get; }
+        public SpriteSpecifier? GuideIcon { get; private set; }
 
         /// <summary>
         ///     The component name in question.
@@ -46,9 +47,18 @@ namespace Content.Server.Construction.Conditions
             if (transform.GridUid == null)
                 return false;
 
-            var indices = transform.Coordinates.ToVector2i(entityManager, IoCManager.Resolve<IMapManager>());
+            var transformSys = entityManager.System<SharedTransformSystem>();
+            var indices = transform.Coordinates.ToVector2i(entityManager, IoCManager.Resolve<IMapManager>(), transformSys);
             var lookup = entityManager.EntitySysManager.GetEntitySystem<EntityLookupSystem>();
-            var entities = indices.GetEntitiesInTile(transform.GridUid.Value, LookupFlags.Approximate | LookupFlags.Anchored, lookup);
+
+
+            if (!entityManager.TryGetComponent<MapGridComponent>(transform.GridUid.Value, out var grid))
+                return !HasEntity;
+
+            if (!entityManager.System<SharedMapSystem>().TryGetTileRef(transform.GridUid.Value, grid, indices, out var tile))
+                return !HasEntity;
+
+            var entities = tile.GetEntitiesInTile(LookupFlags.Approximate | LookupFlags.Static, lookup);
 
             foreach (var ent in entities)
             {

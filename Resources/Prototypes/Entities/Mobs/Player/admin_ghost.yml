@@ -1,25 +1,27 @@
 - type: entity
-  parent: MobObserver
-  save: false
+  parent: [MobObserverBase, InventoryBase]
   id: AdminObserver
   name: admin observer
-  noSpawn: true
+  categories: [ HideSpawnMenu ]
   components:
+  - type: ContentEye
+    maxZoom: 8.916104, 8.916104
   - type: Tag
     tags:
+    - InstantDoAfters
     - CanPilot
+    - BypassInteractionRangeChecks
+    - BypassDropChecks
+    - NoConsoleSound
   - type: Input
     context: "aghost"
   - type: Ghost
     canInteract: true
+  - type: GhostHearing
   - type: Hands
-  - type: DoAfter
+  - type: ComplexInteraction
+  - type: Puller
   - type: CombatMode
-  - type: Actions
-  - type: InputMover
-  - type: MovementSpeedModifier
-    baseSprintSpeed: 12
-    baseWalkSpeed: 8
   - type: Physics
     ignorePaused: true
     bodyType: Kinematic
@@ -28,80 +30,142 @@
   - type: Access
     groups:
     - AllAccess
+    - Silicon
+    tags:
+    - NuclearOperative
+    - SyndicateAgent
+    - CentralCommand
   - type: UserInterface
     interfaces:
-      - key: enum.SolarControlConsoleUiKey.Key
+      enum.SolarControlConsoleUiKey.Key:
         type: SolarControlConsoleBoundUserInterface
-      - key: enum.CommunicationsConsoleUiKey.Key
+      enum.CommunicationsConsoleUiKey.Key:
         type: CommunicationsConsoleBoundUserInterface
-      - key: enum.RadarConsoleUiKey.Key
+      enum.RadarConsoleUiKey.Key:
         type: RadarConsoleBoundUserInterface
-      - key: enum.CargoConsoleUiKey.Orders
+      enum.CargoConsoleUiKey.Orders:
         type: CargoOrderConsoleBoundUserInterface
-      - key: enum.CrewMonitoringUIKey.Key
+      enum.CrewMonitoringUIKey.Key:
         type: CrewMonitoringBoundUserInterface
+      enum.GeneralStationRecordConsoleKey.Key:
+      # who the fuck named this bruh
+        type: GeneralStationRecordConsoleBoundUserInterface
   - type: IntrinsicUI
     uis:
-      - key: enum.SolarControlConsoleUiKey.Key
-        toggleAction:
-          name: action-name-show-solar-console
-          description: action-description-show-solar-console
-          icon: Structures/Machines/parts.rsi/box_0.png
-          iconOn: Structures/Machines/parts.rsi/box_2.png
-          keywords: [ "AI", "console", "interface" ]
-          priority: -10
-          event: !type:ToggleIntrinsicUIEvent
-      - key: enum.CommunicationsConsoleUiKey.Key
-        toggleAction:
-          name: action-name-show-communications-console
-          description: action-description-show-communications-console
-          icon: Structures/Machines/parts.rsi/box_0.png
-          iconOn: Structures/Machines/parts.rsi/box_2.png
-          keywords: [ "AI", "console", "interface" ]
-          priority: -10
-          event: !type:ToggleIntrinsicUIEvent
-      - key: enum.RadarConsoleUiKey.Key
-        toggleAction:
-          name: action-name-show-radar-console
-          description: action-description-show-radar-console
-          icon: Structures/Machines/parts.rsi/box_0.png
-          iconOn: Structures/Machines/parts.rsi/box_2.png
-          keywords: [ "AI", "console", "interface" ]
-          priority: -10
-          event: !type:ToggleIntrinsicUIEvent
-      - key: enum.CargoConsoleUiKey.Orders
-        toggleAction:
-          name: action-name-show-cargo-console
-          description: action-description-show-cargo-console
-          icon: Structures/Machines/parts.rsi/box_0.png
-          iconOn: Structures/Machines/parts.rsi/box_2.png
-          keywords: [ "AI", "console", "interface" ]
-          priority: -10
-          event: !type:ToggleIntrinsicUIEvent
-      - key: enum.CrewMonitoringUIKey.Key
-        toggleAction:
-          name: action-name-show-crew-monitoring-console
-          description: action-description-crew-monitoring-console
-          icon: Structures/Machines/parts.rsi/box_0.png
-          iconOn: Structures/Machines/parts.rsi/box_2.png
-          keywords: [ "AI", "console", "interface" ]
-          priority: -10
-          event: !type:ToggleIntrinsicUIEvent
+      enum.SolarControlConsoleUiKey.Key:
+        toggleAction: ActionAGhostShowSolar
+      enum.CommunicationsConsoleUiKey.Key:
+        toggleAction: ActionAGhostShowCommunications
+      enum.RadarConsoleUiKey.Key:
+        toggleAction: ActionAGhostShowRadar
+      enum.CargoConsoleUiKey.Orders:
+        toggleAction: ActionAGhostShowCargo
+      enum.CrewMonitoringUIKey.Key:
+        toggleAction: ActionAGhostShowCrewMonitoring
+      enum.GeneralStationRecordConsoleKey.Key:
+        toggleAction: ActionAGhostShowStationRecords
   - type: SolarControlConsole # look ma i AM the computer!
   - type: CommunicationsConsole
-    title: communicationsconsole-announcement-title-centcom
-    color: "#228b22"
+    title: comms-console-announcement-title-centcom
+    color: "#1d8bad"
+    delay: 10
+    initialDelay: 0
+    global: true
   - type: RadarConsole
+    followEntity: true
   - type: CargoOrderConsole
+  - type: BankClient
   - type: CrewMonitoringConsole
-    snap: false
-    precision: 3
+  - type: GeneralStationRecordConsole
+    canDeleteEntries: true
   - type: DeviceNetwork
     deviceNetId: Wireless
-    receiveFrequencyId: SuitSensor
+    receiveFrequencyId: CrewMonitor
+    transmitFrequencyId: ShuttleTimer
   - type: WirelessNetworkConnection
     range: 500
+  - type: StationLimitedNetwork
   - type: Thieving
     stripTimeReduction: 9999
     stealthy: true
   - type: Stripping
+  - type: SolutionScanner
+  - type: IgnoreUIRange
+  - type: ShowAntagIcons
+  - type: Inventory
+    templateId: aghost
+  - type: Loadout
+    prototypes: [ MobAghostGear ]
+  - type: BypassInteractionChecks
+
+- type: entity
+  id: ActionAGhostShowSolar
+  name: Solar Control Interface
+  description: View a Solar Control Interface.
+  components:
+  - type: InstantAction
+    icon: { sprite: Structures/Machines/parts.rsi, state: box_0 }
+    iconOn: Structures/Machines/parts.rsi/box_2.png
+    keywords: [ "AI", "console", "interface" ]
+    priority: -10
+    event: !type:ToggleIntrinsicUIEvent { key: enum.SolarControlConsoleUiKey.Key }
+
+- type: entity
+  id: ActionAGhostShowCommunications
+  name: Communications Interface
+  description: View a Communications Interface.
+  components:
+  - type: InstantAction
+    icon: { sprite: Interface/Actions/actions_ai.rsi, state: comms_console }
+    iconOn: Interface/Actions/actions_ai.rsi/comms_console.png
+    keywords: [ "AI", "console", "interface" ]
+    priority: -4
+    event: !type:ToggleIntrinsicUIEvent { key: enum.CommunicationsConsoleUiKey.Key }
+
+- type: entity
+  id: ActionAGhostShowRadar
+  name: Mass Scanner Interface
+  description: View a Mass Scanner Interface.
+  components:
+  - type: InstantAction
+    icon: { sprite: Interface/Actions/actions_ai.rsi, state: mass_scanner }
+    iconOn: Interface/Actions/actions_ai.rsi/mass_scanner.png
+    keywords: [ "AI", "console", "interface" ]
+    priority: -6
+    event: !type:ToggleIntrinsicUIEvent { key: enum.RadarConsoleUiKey.Key }
+
+- type: entity
+  id: ActionAGhostShowCargo
+  name: Cargo Ordering Interface
+  description: View a Cargo Ordering Interface.
+  components:
+  - type: InstantAction
+    icon: { sprite: Structures/Machines/parts.rsi, state: box_0 }
+    iconOn: Structures/Machines/parts.rsi/box_2.png
+    keywords: [ "AI", "console", "interface" ]
+    priority: -10
+    event: !type:ToggleIntrinsicUIEvent { key: enum.CargoConsoleUiKey.Orders }
+
+- type: entity
+  id: ActionAGhostShowCrewMonitoring
+  name: Crew Monitoring Interface
+  description: View a Crew Monitoring Interface.
+  components:
+  - type: InstantAction
+    icon: { sprite: Interface/Actions/actions_ai.rsi, state: crew_monitor }
+    iconOn: Interface/Actions/actions_ai.rsi/crew_monitor.png
+    keywords: [ "AI", "console", "interface" ]
+    priority: -8
+    event: !type:ToggleIntrinsicUIEvent { key: enum.CrewMonitoringUIKey.Key }
+
+- type: entity
+  id: ActionAGhostShowStationRecords
+  name: Station Records Interface
+  description: View a Station Records Interface.
+  components:
+  - type: InstantAction
+    icon: { sprite: Interface/Actions/actions_ai.rsi, state: station_records }
+    iconOn: Interface/Actions/actions_ai.rsi/station_records.png
+    keywords: [ "AI", "console", "interface" ]
+    priority: -7
+    event: !type:ToggleIntrinsicUIEvent { key: enum.GeneralStationRecordConsoleKey.Key }

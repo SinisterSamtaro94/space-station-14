@@ -1,4 +1,6 @@
 using Content.Shared.Examine;
+using Content.Shared.Mobs;
+using Content.Shared.Mobs.Systems;
 using Content.Shared.Stealth.Components;
 using Robust.Shared.GameStates;
 using Robust.Shared.Timing;
@@ -18,11 +20,14 @@ public abstract class SharedStealthSystem : EntitySystem
         SubscribeLocalEvent<StealthOnMoveComponent, MoveEvent>(OnMove);
         SubscribeLocalEvent<StealthOnMoveComponent, GetVisibilityModifiersEvent>(OnGetVisibilityModifiers);
         SubscribeLocalEvent<StealthComponent, EntityPausedEvent>(OnPaused);
+        SubscribeLocalEvent<StealthComponent, EntityUnpausedEvent>(OnUnpaused);
         SubscribeLocalEvent<StealthComponent, ComponentInit>(OnInit);
-        SubscribeLocalEvent<StealthComponent, ExamineAttemptEvent>(OnExamine);
+        SubscribeLocalEvent<StealthComponent, ExamineAttemptEvent>(OnExamineAttempt);
+        SubscribeLocalEvent<StealthComponent, ExaminedEvent>(OnExamined);
+        SubscribeLocalEvent<StealthComponent, MobStateChangedEvent>(OnMobStateChanged);
     }
 
-    private void OnExamine(EntityUid uid, StealthComponent component, ExamineAttemptEvent args)
+    private void OnExamineAttempt(EntityUid uid, StealthComponent component, ExamineAttemptEvent args)
     {
         if (!component.Enabled || GetVisibility(uid, component) > component.ExamineThreshold)
             return;
@@ -41,28 +46,46 @@ public abstract class SharedStealthSystem : EntitySystem
         args.Cancel();
     }
 
+    private void OnExamined(EntityUid uid, StealthComponent component, ExaminedEvent args)
+    {
+        if (component.Enabled)
+            args.PushMarkup(Loc.GetString(component.ExaminedDesc, ("target", uid)));
+    }
+
     public virtual void SetEnabled(EntityUid uid, bool value, StealthComponent? component = null)
     {
         if (!Resolve(uid, ref component, false) || component.Enabled == value)
             return;
 
         component.Enabled = value;
-        Dirty(component);
+        Dirty(uid, component);
     }
 
-    private void OnPaused(EntityUid uid, StealthComponent component, EntityPausedEvent args)
+    private void OnMobStateChanged(EntityUid uid, StealthComponent component, MobStateChangedEvent args)
     {
-        if (args.Paused)
+        if (args.NewMobState == MobState.Dead)
         {
-            component.LastVisibility = GetVisibility(uid, component);
-            component.LastUpdated = null;
+            component.Enabled = component.EnabledOnDeath;
         }
         else
         {
-            component.LastUpdated = _timing.CurTime;
+            component.Enabled = true;
         }
 
-        Dirty(component);
+        Dirty(uid, component);
+    }
+
+    private void OnPaused(EntityUid uid, StealthComponent component, ref EntityPausedEvent args)
+    {
+        component.LastVisibility = GetVisibility(uid, component);
+        component.LastUpdated = null;
+        Dirty(uid, component);
+    }
+
+    private void OnUnpaused(EntityUid uid, StealthComponent component, ref EntityUnpausedEvent args)
+    {
+        component.LastUpdated = _timing.CurTime;
+        Dirty(uid, component);
     }
 
     protected virtual void OnInit(EntityUid uid, StealthComponent component, ComponentInit args)
@@ -90,13 +113,13 @@ public abstract class SharedStealthSystem : EntitySystem
 
     private void OnMove(EntityUid uid, StealthOnMoveComponent component, ref MoveEvent args)
     {
-        if (args.FromStateHandling)
+        if (_timing.ApplyingState)
             return;
 
         if (args.NewPosition.EntityId != args.OldPosition.EntityId)
             return;
 
-        var delta = component.MovementVisibilityRate * (args.NewPosition.Position - args.OldPosition.Position).Length;
+        var delta = component.MovementVisibilityRate * (args.NewPosition.Position - args.OldPosition.Position).Length();
         ModifyVisibility(uid, delta);
     }
 
@@ -122,7 +145,7 @@ public abstract class SharedStealthSystem : EntitySystem
         }
 
         component.LastVisibility = Math.Clamp(component.LastVisibility + delta, component.MinVisibility, component.MaxVisibility);
-        Dirty(component);
+        Dirty(uid, component);
     }
 
     /// <summary>
@@ -138,7 +161,7 @@ public abstract class SharedStealthSystem : EntitySystem
         if (component.LastUpdated != null)
             component.LastUpdated = _timing.CurTime;
 
-        Dirty(component);
+        Dirty(uid, component);
     }
 
     /// <summary>
@@ -166,7 +189,7 @@ public abstract class SharedStealthSystem : EntitySystem
 
     /// <summary>
     ///     Used to run through any stealth effecting components on the entity.
-    /// <summary>
+    /// </summary>
     private sealed class GetVisibilityModifiersEvent : EntityEventArgs
     {
         public readonly StealthComponent Stealth;

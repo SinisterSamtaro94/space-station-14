@@ -1,13 +1,14 @@
 - type: entity
   id: BaseMagazineShotgun
   name: ammo drum (.50 shells)
-  parent: BaseItem
+  parent: [ BaseItem, BaseSecurityContraband ]
   abstract: true
   components:
   - type: Tag
     tags:
     - MagazineShotgun
   - type: BallisticAmmoProvider
+    mayTransfer: true
     whitelist:
       tags:
         - ShellShotgun
@@ -15,12 +16,11 @@
     soundRack:
       path: /Audio/Weapons/Guns/Cock/smg_cock.ogg
   - type: Item
-    size: 5
+    size: Small
   - type: ContainerContainer
     containers:
       ballistic-ammo: !type:Container
   - type: Sprite
-    netsync: false
     sprite: Objects/Weapons/Guns/Ammunition/Magazine/Shotgun/m12.rsi
     layers:
     - state: base
@@ -32,6 +32,15 @@
     steps: 2
     zeroVisible: false
   - type: Appearance
+
+- type: entity
+  id: MagazineShotgunEmpty
+  name: ammo drum (.50 shells any)
+  suffix: empty
+  parent: BaseMagazineShotgun
+  components:
+  - type: BallisticAmmoProvider
+    proto: null
 
 - type: entity
   id: MagazineShotgun

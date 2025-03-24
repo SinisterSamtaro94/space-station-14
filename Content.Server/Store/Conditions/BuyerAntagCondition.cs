@@ -1,16 +1,16 @@
-using Content.Server.Mind.Components;
-using Content.Server.Traitor;
+using Content.Shared.Mind;
 using Content.Shared.Roles;
+using Content.Shared.Store;
 using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype.Set;
 
-namespace Content.Shared.Store.Conditions;
+namespace Content.Server.Store.Conditions;
 
 /// <summary>
 /// Allows a store entry to be filtered out based on the user's antag role.
 /// Supports both blacklists and whitelists. This is copypaste because roles
 /// are absolute shitcode. Refactor this later. -emo
 /// </summary>
-public sealed class BuyerAntagCondition : ListingCondition
+public sealed partial class BuyerAntagCondition : ListingCondition
 {
     /// <summary>
     /// A whitelist of antag roles that can purchase this listing. Only one needs to be found.
@@ -28,17 +28,20 @@ public sealed class BuyerAntagCondition : ListingCondition
     {
         var ent = args.EntityManager;
 
-        if (!ent.TryGetComponent<MindComponent>(args.Buyer, out var mind) || mind.Mind == null)
-            return true;
+        if (!ent.HasComponent<MindComponent>(args.Buyer))
+            return true; // inanimate objects don't have minds
+
+        var roleSystem = ent.System<SharedRoleSystem>();
+        var roles = roleSystem.MindGetAllRoleInfo(args.Buyer);
 
         if (Blacklist != null)
         {
-            foreach (var role in mind.Mind.AllRoles)
+            foreach (var role in roles)
             {
-                if (role is not TraitorRole blacklistantag)
+                if (!role.Antagonist || string.IsNullOrEmpty(role.Prototype))
                     continue;
 
-                if (Blacklist.Contains(blacklistantag.Prototype.ID))
+                if (Blacklist.Contains(role.Prototype))
                     return false;
             }
         }
@@ -46,12 +49,13 @@ public sealed class BuyerAntagCondition : ListingCondition
         if (Whitelist != null)
         {
             var found = false;
-            foreach (var role in mind.Mind.AllRoles)
+            foreach (var role in roles)
             {
-                if (role is not TraitorRole antag)
+
+                if (!role.Antagonist || string.IsNullOrEmpty(role.Prototype))
                     continue;
 
-                if (Whitelist.Contains(antag.Prototype.ID))
+                if (Whitelist.Contains(role.Prototype))
                     found = true;
             }
             if (!found)

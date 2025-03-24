@@ -2,14 +2,19 @@
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Content.Server.Administration.Systems;
 using Content.Server.Database;
 using Content.Server.GameTicking;
 using Content.Shared.Administration.Logs;
 using Content.Shared.CCVar;
+using Content.Shared.Chat;
 using Content.Shared.Database;
+using Content.Shared.Players.PlayTimeTracking;
 using Prometheus;
 using Robust.Shared;
 using Robust.Shared.Configuration;
+using Robust.Shared.Network;
+using Robust.Shared.Player;
 using Robust.Shared.Reflection;
 using Robust.Shared.Timing;
 
@@ -24,6 +29,10 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
     [Dependency] private readonly IGameTiming _timing = default!;
     [Dependency] private readonly IDynamicTypeFactory _typeFactory = default!;
     [Dependency] private readonly IReflectionManager _reflection = default!;
+    [Dependency] private readonly IDependencyCollection _dependencies = default!;
+    [Dependency] private readonly ISharedPlayerManager _player = default!;
+    [Dependency] private readonly ISharedPlaytimeManager _playtime = default!;
+    [Dependency] private readonly ISharedChatManager _chat = default!;
 
     public const string SawmillId = "admin.logs";
 
@@ -64,17 +73,23 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
     private TimeSpan _queueSendDelay;
     private int _queueMax;
     private int _preRoundQueueMax;
+    private int _dropThreshold;
+    private int _highImpactLogPlaytime;
 
     // Per update
     private TimeSpan _nextUpdateTime;
-    private readonly ConcurrentQueue<QueuedLog> _logQueue = new();
-    private readonly ConcurrentQueue<QueuedLog> _preRoundLogQueue = new();
+    private readonly ConcurrentQueue<AdminLog> _logQueue = new();
+    private readonly ConcurrentQueue<AdminLog> _preRoundLogQueue = new();
 
     // Per round
     private int _currentRoundId;
     private int _currentLogId;
     private int NextLogId => Interlocked.Increment(ref _currentLogId);
     private GameRunLevel _runLevel = GameRunLevel.PreRoundLobby;
+
+    // 1 when saving, 0 otherwise
+    private int _savingLogs;
+    private int _logsDropped;
 
     public void Initialize()
     {
@@ -92,6 +107,10 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
             value => _queueMax = value, true);
         _configuration.OnValueChanged(CCVars.AdminLogsPreRoundQueueMax,
             value => _preRoundQueueMax = value, true);
+        _configuration.OnValueChanged(CCVars.AdminLogsDropThreshold,
+            value => _dropThreshold = value, true);
+        _configuration.OnValueChanged(CCVars.AdminLogsHighLogPlaytime,
+            value => _highImpactLogPlaytime = value, true);
 
         if (_metricsEnabled)
         {
@@ -130,7 +149,7 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
 
         if (_timing.RealTime >= _nextUpdateTime)
         {
-            await SaveLogs();
+            await TrySaveLogs();
             return;
         }
 
@@ -141,8 +160,7 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
                 QueueCapReached.Inc();
             }
 
-            _sawmill.Warning($"Maximum cap of {_queueMax} reached for admin logs.");
-            await SaveLogs();
+            await TrySaveLogs();
         }
     }
 
@@ -161,8 +179,22 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
             PreRoundQueueCapReached.Inc();
         }
 
-        _sawmill.Warning($"Maximum cap of {_preRoundQueueMax} reached for pre-round admin logs.");
-        await SaveLogs();
+        await TrySaveLogs();
+    }
+
+    private async Task TrySaveLogs()
+    {
+        if (Interlocked.Exchange(ref _savingLogs, 1) == 1)
+            return;
+
+        try
+        {
+            await SaveLogs();
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _savingLogs, 0);
+        }
     }
 
     private async Task SaveLogs()
@@ -170,11 +202,19 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
         _nextUpdateTime = _timing.RealTime.Add(_queueSendDelay);
 
         // TODO ADMIN LOGS array pool
-        var copy = new List<QueuedLog>(_logQueue.Count + _preRoundLogQueue.Count);
-
+        var copy = new List<AdminLog>(_logQueue.Count + _preRoundLogQueue.Count);
         copy.AddRange(_logQueue);
-        _logQueue.Clear();
-        Queue.Set(0);
+
+        if (_logQueue.Count >= _queueMax)
+        {
+            _sawmill.Warning($"In-round cap of {_queueMax} reached for admin logs.");
+        }
+
+        var dropped = Interlocked.Exchange(ref _logsDropped, 0);
+        if (dropped > 0)
+        {
+            _sawmill.Error($"Dropped {dropped} logs. Current max threshold: {_dropThreshold}");
+        }
 
         if (_runLevel == GameRunLevel.PreRoundLobby && !_preRoundLogQueue.IsEmpty)
         {
@@ -182,23 +222,22 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
         }
         else
         {
-            foreach (var queued in _preRoundLogQueue)
+            foreach (var log in _preRoundLogQueue)
             {
-                queued.Log.RoundId = _currentRoundId;
-                CacheLog(queued);
+                log.RoundId = _currentRoundId;
+                CacheLog(log);
             }
 
             copy.AddRange(_preRoundLogQueue);
         }
 
+        _logQueue.Clear();
+        Queue.Set(0);
+
         _preRoundLogQueue.Clear();
         PreRoundQueue.Set(0);
 
-        // ship the logs to Azkaban
-        var task = Task.Run(async () =>
-        {
-            await _db.AddAdminLogs(copy);
-        });
+        var task = _db.AddAdminLogs(copy);
 
         _sawmill.Debug($"Saving {copy.Count} admin logs.");
 
@@ -230,6 +269,17 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
         {
             Interlocked.Exchange(ref _currentLogId, 0);
 
+            if (!_preRoundLogQueue.IsEmpty)
+            {
+                // This technically means that you could get pre-round logs from
+                // a previous round passed onto the next one
+                // If this happens please file a complaint with your nearest lottery
+                foreach (var log in _preRoundLogQueue)
+                {
+                    log.Id = NextLogId;
+                }
+            }
+
             if (_metricsEnabled)
             {
                 PreRoundQueueCapReached.Set(0);
@@ -239,43 +289,81 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
         }
     }
 
-    private async void Add(LogType type, LogImpact impact, string message, JsonDocument json, HashSet<Guid> players, Dictionary<int, string?> entities)
+    private void Add(LogType type, LogImpact impact, string message, JsonDocument json, HashSet<Guid> players)
     {
-        var logId = NextLogId;
-        var date = DateTime.UtcNow;
+        var preRound = _runLevel == GameRunLevel.PreRoundLobby;
+        var count = preRound ? _preRoundLogQueue.Count : _logQueue.Count;
+        if (count >= _dropThreshold)
+        {
+            Interlocked.Increment(ref _logsDropped);
+            return;
+        }
 
         var log = new AdminLog
         {
-            Id = logId,
+            Id = NextLogId,
             RoundId = _currentRoundId,
             Type = type,
             Impact = impact,
-            Date = date,
+            Date = DateTime.UtcNow,
             Message = message,
             Json = json,
             Players = new List<AdminLogPlayer>(players.Count)
         };
 
-        var queued = new QueuedLog(log, entities);
+        var adminLog = false;
+        var adminSys = _entityManager.SystemOrNull<AdminSystem>();
+        var logMessage = message;
 
         foreach (var id in players)
         {
             var player = new AdminLogPlayer
             {
-                LogId = logId,
+                LogId = log.Id,
                 PlayerUserId = id
             };
 
             log.Players.Add(player);
+
+            if (adminSys != null)
+            {
+                var cachedInfo = adminSys.GetCachedPlayerInfo(new NetUserId(id));
+                if (cachedInfo != null && cachedInfo.Antag)
+                {
+                    logMessage += " [ANTAG: " + cachedInfo.CharacterName + "]";
+                }
+            }
+
+            if (adminLog)
+                continue;
+
+            if (impact == LogImpact.Extreme) // Always chat-notify Extreme logs
+                adminLog = true;
+
+            if (impact == LogImpact.High) // Only chat-notify High logs if the player is below a threshold playtime
+            {
+                if (_highImpactLogPlaytime >= 0 && _player.TryGetSessionById(new NetUserId(id), out var session))
+                {
+                    var playtimes = _playtime.GetPlayTimes(session);
+                    if (playtimes.TryGetValue(PlayTimeTrackingShared.TrackerOverall, out var overallTime) &&
+                        overallTime <= TimeSpan.FromHours(_highImpactLogPlaytime))
+                    {
+                        adminLog = true;
+                    }
+                }
+            }
         }
 
-        if (_runLevel == GameRunLevel.PreRoundLobby)
+        if (adminLog)
+            _chat.SendAdminAlert(logMessage);
+
+        if (preRound)
         {
-            _preRoundLogQueue.Enqueue(queued);
+            _preRoundLogQueue.Enqueue(log);
         }
         else
         {
-            _logQueue.Enqueue(queued);
+            _logQueue.Enqueue(log);
             CacheLog(log);
         }
     }
@@ -288,10 +376,10 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
             return;
         }
 
-        var (json, players, entities) = ToJson(handler.Values);
+        var (json, players) = ToJson(handler.Values);
         var message = handler.ToStringAndClear();
 
-        Add(type, impact, message, json, players, entities);
+        Add(type, impact, message, json, players);
     }
 
     public override void Add(LogType type, ref LogStringHandler handler)
@@ -365,5 +453,10 @@ public sealed partial class AdminLogManager : SharedAdminLogManager, IAdminLogMa
     public Task<Round> CurrentRound()
     {
         return Round(_currentRoundId);
+    }
+
+    public Task<int> CountLogs(int round)
+    {
+        return _db.CountAdminLogs(round);
     }
 }
